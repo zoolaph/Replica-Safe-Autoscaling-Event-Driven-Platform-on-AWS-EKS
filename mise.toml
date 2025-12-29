@@ -1,0 +1,5 @@
+[tools]
+terraform = "1.7.5"
+aws-cli    = "2.15.57"
+kubectl   = "1.29.7"
+helm      = "3.14.4"
