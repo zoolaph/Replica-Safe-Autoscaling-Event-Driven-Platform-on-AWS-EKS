@@ -1,0 +1,29 @@
+# ------------------------------
+# Terraform: never commit
+# ------------------------------
+**/.terraform/**
+
+# State files (including backups, crash logs, etc.)
+**/*.tfstate
+**/*.tfstate.*
+
+# Variables files (often contain secrets)
+**/*.tfvars
+**/*.tfvars.json
+**/terraform.tfvars
+
+# Kubeconfigs (can contain certs/tokens)
+**/*kubeconfig*
+**/kubeconfig
+**/.kube/config
+
+# Keys / certs / secrets
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+
+# direnv / env
+.envrc
+.env
+.env.*
