@@ -12,3 +12,5 @@ echo
 
 terraform -chdir=infra/environments/dev init -reconfigure -backend-config=backend.hcl
 terraform -chdir=infra/environments/dev validate
+terraform -chdir=infra/environments/dev plan 
+terraform -chdir=infra/environments/dev apply 
