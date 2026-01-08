@@ -1,0 +1,4 @@
+replicaCount: 1
+
+# keep defaults for now; we can tune later
+resources: {}
