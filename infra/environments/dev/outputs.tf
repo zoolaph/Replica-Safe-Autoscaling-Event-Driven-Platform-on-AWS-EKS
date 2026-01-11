@@ -17,3 +17,11 @@ output "public_subnets" {
   description = "Public subnet ids (where NAT lives)"
   value       = module.vpc.public_subnets
 }
+
+output "cluster_autoscaler_role_arn" {
+  value = aws_iam_role.cluster_autoscaler.arn
+}
+
+output "region" {
+  value = var.region
+}

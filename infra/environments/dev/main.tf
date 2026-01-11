@@ -104,6 +104,10 @@ module "eks" {
       min_size     = var.node_min
       max_size     = var.node_max
       desired_size = var.node_desired
+      autoscaling_group_tags = {
+        "k8s.io/cluster-autoscaler/enabled"                 = "true"
+        "k8s.io/cluster-autoscaler/${local.cluster_name}"   = "owned"
+      }
     }
   }
 
