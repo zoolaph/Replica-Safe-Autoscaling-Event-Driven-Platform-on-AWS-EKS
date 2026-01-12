@@ -30,30 +30,56 @@ rules:
   - apiGroups: [""]
     resources: ["events", "endpoints"]
     verbs: ["create", "patch"]
+
   - apiGroups: [""]
     resources: ["pods/eviction"]
     verbs: ["create"]
+
   - apiGroups: [""]
     resources: ["pods/status"]
     verbs: ["update"]
+
   - apiGroups: [""]
-    resources: ["pods", "services", "replicationcontrollers", "persistentvolumeclaims", "persistentvolumes", "nodes", "namespaces"]
+    resources:
+      ["pods", "services", "replicationcontrollers", "persistentvolumeclaims", "persistentvolumes", "namespaces"]
     verbs: ["watch", "list", "get"]
+
+  # ✅ FIX: CA must be able to taint/label nodes during scale-down
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["watch", "list", "get", "update", "patch"]
+
   - apiGroups: ["apps"]
     resources: ["statefulsets", "replicasets", "daemonsets", "deployments"]
     verbs: ["watch", "list", "get"]
+
   - apiGroups: ["batch"]
     resources: ["jobs", "cronjobs"]
     verbs: ["watch", "list", "get"]
+
+  # ✅ add "get" (some CA code paths read PDB objects)
   - apiGroups: ["policy"]
     resources: ["poddisruptionbudgets"]
-    verbs: ["watch", "list"]
-  - apiGroups: ["storage.k8s.io"]
-    resources: ["storageclasses", "csinodes", "csidrivers", "csistoragecapacities"]
     verbs: ["watch", "list", "get"]
+
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses", "csinodes", "csidrivers", "csistoragecapacities", "volumeattachments"]
+    verbs: ["watch", "list", "get"]
+
+  # ✅ leader election: include watch + patch
   - apiGroups: ["coordination.k8s.io"]
     resources: ["leases"]
-    verbs: ["create", "get", "list", "update"]
+    verbs: ["create", "get", "list", "watch", "update", "patch"]
+
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["volumeattachments"]
+    verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -96,13 +122,17 @@ spec:
           command:
             - ./cluster-autoscaler
             - --cloud-provider=aws
-            - --aws-region=${AWS_REGION}
             - --stderrthreshold=info
             - --v=4
             - --expander=least-waste
             - --balance-similar-node-groups
             - --skip-nodes-with-system-pods=false
             - --node-group-auto-discovery=asg:tag=k8s.io/cluster-autoscaler/enabled,k8s.io/cluster-autoscaler/${CLUSTER_NAME}
+          env:
+            - name: AWS_REGION
+              value: "${AWS_REGION}"
+            - name: AWS_DEFAULT_REGION
+              value: "${AWS_REGION}"
           resources:
             requests:
               cpu: 100m
