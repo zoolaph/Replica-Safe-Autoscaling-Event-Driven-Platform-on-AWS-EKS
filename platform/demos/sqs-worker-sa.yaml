@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sqs-worker
+  namespace: default
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/sqs-worker-role
+    eks.amazonaws.com/sts-regional-endpoints: "true"

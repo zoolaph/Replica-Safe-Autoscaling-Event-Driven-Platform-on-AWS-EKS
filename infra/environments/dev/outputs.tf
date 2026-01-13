@@ -25,3 +25,7 @@ output "cluster_autoscaler_role_arn" {
 output "region" {
   value = var.region
 }
+
+output "keda_demo_queue_url" { value = aws_sqs_queue.keda_demo.url }
+output "keda_demo_queue_arn" { value = aws_sqs_queue.keda_demo.arn }
+output "sqs_worker_role_arn" { value = aws_iam_role.sqs_worker.arn }
