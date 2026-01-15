@@ -14,7 +14,7 @@ Usage:
 
 Commands:
   deploy platform      Deploy platform add-ons (current: delegates to legacy script)
-  destroy infra        Destroy infrastructure (TODO: wire next)
+  destroy infra        Destroy infrastructure.
   verify platform      Verify platform (TODO: wire next)
 
 Examples:
@@ -45,7 +45,11 @@ main() {
       # Delegate to existing script for now to keep changes small
       exec "${ROOT_DIR}/scripts/platform/deploy-platform.sh"
       ;;
-    *)
+    destroy:infra)
+      info "Destroying infra (env=${ENV_NAME}, region=${REGION})"
+      exec "${ROOT_DIR}/scripts/infra/destroy-infra.sh" --env "${ENV_NAME}" --region "${REGION}"
+      ;;
+    *)    
       usage
       die "Unknown command: ${cmd} ${sub}"
       ;;

@@ -3,15 +3,21 @@ set -euo pipefail
 
 AWS_PROFILE="${AWS_PROFILE:-dev}"
 AWS_REGION="${AWS_REGION:-eu-west-3}"   
-TF_DIR="${TF_DIR:-infra/environments/dev}"  
 
-for bin in terraform kubectl aws; do
-  if ! command -v "$bin" >/dev/null 2>&1; then
-    echo "ERROR: required command not found in PATH: $bin" >&2
-    exit 1
-  fi
-done
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "${ROOT_DIR}/scripts/lib/common.sh"
 
+usage() {
+  echo "Usage: deploy-platform.sh [--env <name>] [--region <region>] [--cluster <name>]"
+  print_common_flags_help
+}
+
+if ! parse_common_flags "$@"; then
+  usage
+  exit 0
+fi
+
+TF_DIR="${ROOT_DIR}/infra/environments/${ENV_NAME}"
 
 CLUSTER_NAME="${CLUSTER_NAME:-}"
 
