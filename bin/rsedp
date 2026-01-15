@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.."; pwd)"
+# shellcheck source=scripts/lib/common.sh
+source "${ROOT_DIR}/scripts/lib/common.sh"
+
+usage() {
+  cat <<'H'
+rsedp — Replica-Safe Event-Driven Platform (EKS) CLI
+
+Usage:
+  rsedp <command> <subcommand> [options]
+
+Commands:
+  deploy platform      Deploy platform add-ons (current: delegates to legacy script)
+  destroy infra        Destroy infrastructure (TODO: wire next)
+  verify platform      Verify platform (TODO: wire next)
+
+Examples:
+  rsedp deploy platform --env dev --region eu-west-3
+H
+  print_common_flags_help
+}
+
+main() {
+  [[ $# -ge 1 ]] || { usage; exit 1; }
+
+  case "${1:-}" in
+    -h|--help) usage; exit 0 ;;
+  esac
+
+  cmd="${1:-}"; sub="${2:-}"
+  shift $(( $# >= 2 ? 2 : 1 ))
+
+  # Parse common flags (supports --help returning 2)
+  if ! parse_common_flags "$@"; then
+    usage
+    exit 0
+  fi
+
+  case "${cmd}:${sub}" in
+    deploy:platform)
+      info "Deploying platform (env=${ENV_NAME}, region=${REGION})"
+      # Delegate to existing script for now to keep changes small
+      exec "${ROOT_DIR}/scripts/platform-install.sh"
+      ;;
+    *)
+      usage
+      die "Unknown command: ${cmd} ${sub}"
+      ;;
+  esac
+}
+
+main "$@"
+
