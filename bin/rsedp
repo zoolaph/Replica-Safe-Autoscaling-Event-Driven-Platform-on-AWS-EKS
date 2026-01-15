@@ -43,7 +43,7 @@ main() {
     deploy:platform)
       info "Deploying platform (env=${ENV_NAME}, region=${REGION})"
       # Delegate to existing script for now to keep changes small
-      exec "${ROOT_DIR}/scripts/platform-install.sh"
+      exec "${ROOT_DIR}/scripts/platform/deploy-platform.sh"
       ;;
     *)
       usage
