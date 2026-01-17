@@ -1,64 +1,29 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.."; pwd)"
-# shellcheck source=scripts/lib/common.sh
-source "${ROOT_DIR}/scripts/lib/common.sh"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() {
   cat <<'H'
-rsedp — Replica-Safe Event-Driven Platform (EKS) CLI
+rsedp — simple command runner
 
 Usage:
-  rsedp <command> <subcommand> [options]
+  ./bin/rsedp <command>
 
 Commands:
-  deploy platform      Deploy platform add-ons (current: delegates to legacy script)
-  destroy infra        Destroy infrastructure.
-  verify platform      Verify platform (TODO: wire next)
+  aws         Login to AWS (SSO)
 
 Examples:
-  rsedp deploy platform --env dev --region eu-west-3
+  ./bin/rsedp aws
+  AWS_PROFILE=dev AWS_DEFAULT_REGION=eu-west-3 ./bin/rsedp aws
 H
-  print_common_flags_help
 }
 
-main() {
-  [[ $# -ge 1 ]] || { usage; exit 1; }
+cmd="${1:-}"
+shift || true
 
-  case "${1:-}" in
-    -h|--help) usage; exit 0 ;;
-  esac
-
-  cmd="${1:-}"; sub="${2:-}"
-  shift $(( $# >= 2 ? 2 : 1 ))
-
-  # Parse common flags (supports --help returning 2)
-  if ! parse_common_flags "$@"; then
-    usage
-    exit 0
-  fi
-
-  case "${cmd}:${sub}" in
-    deploy:platform)
-      info "Deploying platform (env=${ENV_NAME}, region=${REGION})"
-      # Delegate to existing script for now to keep changes small
-      exec "${ROOT_DIR}/scripts/platform/deploy-platform.sh"
-      ;;
-    destroy:infra)
-      info "Destroying infra (env=${ENV_NAME}, region=${REGION})"
-      exec "${ROOT_DIR}/scripts/infra/destroy-infra.sh" --env "${ENV_NAME}" --region "${REGION}"
-      ;;
-    verify:platform)
-      info "Verifying platform (env=${ENV_NAME}, region=${REGION})"
-      exec "${ROOT_DIR}/scripts/platform/verify-platform.sh" --env "${ENV_NAME}" --region "${REGION}" ${CLUSTER_NAME:+--cluster "${CLUSTER_NAME}"}
-      ;;
-    *)    
-      usage
-      die "Unknown command: ${cmd} ${sub}"
-      ;;
-  esac
-}
-
-main "$@"
-
+case "${cmd}" in
+  ""|-h|--help) usage; exit 0 ;;
+  aws) exec "${ROOT_DIR}/scripts/aws.sh" "$@" ;;
+  *) usage; echo "ERROR: Unknown command: ${cmd}"; exit 1 ;;
+esac
