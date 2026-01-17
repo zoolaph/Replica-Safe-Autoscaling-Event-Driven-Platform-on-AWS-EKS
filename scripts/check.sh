@@ -1,85 +1,112 @@
-
+#!/usr/bin/env bash
 set -euo pipefail
 
+AWS_PROFILE="${AWS_PROFILE:-dev}"
+AWS_REGION="${AWS_DEFAULT_REGION:-eu-west-3}"
+export AWS_DEFAULT_REGION="${AWS_REGION}"
 
-PROFILE=dev REGION=eu-west-3 CLUSTER=replicasafe-dev PROJECT=ReplicaSafeEKS ENV=dev \
-STATE_BUCKET="replicasafeeks-tfstate-021471808095-eu-west-3" \
-LOCK_TABLE="replicasafeeks-tflock-021471808095-eu-west-3" \
+pass() { echo "[PASS] $*"; }
+fail() { echo "[FAIL] $*"; }
+info() { echo "[INFO] $*"; }
 
+usage() {
+  cat <<'H'
+Usage:
+  ./bin/rsedp check
 
-echo "== Identity =="
-aws sts get-caller-identity --profile "$PROFILE"
+Checks:
+  - kubectl connectivity + nodes
+  - metrics-server (kubectl top nodes)
+  - EBS CSI driver presence
+  - ALB controller presence
+  - cluster-autoscaler presence
+  - KEDA presence
+  - (optional) SQS demo objects presence
+  - (optional) ALB demo ingress hostname
+H
+}
 
-echo
-echo "== EKS =="
-if aws eks describe-cluster --name "$CLUSTER" --region "$REGION" --profile "$PROFILE" >/dev/null 2>&1; then
-  echo "EKS cluster EXISTS: $CLUSTER"
-  echo -n "Nodegroups: "
-  aws eks list-nodegroups --cluster-name "$CLUSTER" --region "$REGION" --profile "$PROFILE" --query "nodegroups[]" --output text || true
+case "${1:-}" in
+  -h|--help) usage; exit 0 ;;
+esac
+
+command -v kubectl >/dev/null 2>&1 || { echo "ERROR: kubectl not found"; exit 1; }
+
+# AWS identity is optional (cluster checks can work without it)
+if command -v aws >/dev/null 2>&1; then
+  if aws sts get-caller-identity --profile "${AWS_PROFILE}" >/dev/null 2>&1; then
+    pass "AWS identity available (profile=${AWS_PROFILE})"
+  else
+    fail "AWS identity NOT available (run: ./bin/rsedp aws)"
+  fi
 else
-  echo "EKS cluster NOT FOUND: $CLUSTER"
+  info "aws CLI not found; skipping AWS identity check"
 fi
 
-echo
-echo "== Tagged resources (quick sweep) =="
-TAGGED_COUNT=$(aws resourcegroupstaggingapi get-resources --region "$REGION" --profile "$PROFILE" \
-  --tag-filters "Key=Project,Values=$PROJECT" "Key=Env,Values=$ENV" \
-  --query "length(ResourceTagMappingList[])" --output text)
-echo "Tagging API count(Project=$PROJECT, Env=$ENV): $TAGGED_COUNT"
-if [ "$TAGGED_COUNT" != "0" ]; then
-  aws resourcegroupstaggingapi get-resources --region "$REGION" --profile "$PROFILE" \
-    --tag-filters "Key=Project,Values=$PROJECT" "Key=Env,Values=$ENV" \
-    --query "ResourceTagMappingList[].ResourceARN" --output text
-fi
-
-echo
-echo "== VPCs (by tags Project/Env) =="
-VPCS=$(aws ec2 describe-vpcs --region "$REGION" --profile "$PROFILE" \
-  --filters "Name=tag:Project,Values=$PROJECT" "Name=tag:Env,Values=$ENV" \
-  --query "Vpcs[].VpcId" --output text)
-
-if [ -z "${VPCS:-}" ]; then
-  echo "No VPCs found with Project=$PROJECT and Env=$ENV"
+# Cluster connectivity
+if kubectl get nodes >/dev/null 2>&1; then
+  pass "kubectl can reach cluster"
+  kubectl get nodes -o wide
 else
-  echo "VPCs: $VPCS"
-  for vpc in $VPCS; do
-    echo
-    echo "-- VPC $vpc dependency counts --"
-    echo -n "Subnets:            "; aws ec2 describe-subnets --region "$REGION" --profile "$PROFILE" --filters "Name=vpc-id,Values=$vpc" --query "length(Subnets[])" --output text
-    echo -n "RouteTables:        "; aws ec2 describe-route-tables --region "$REGION" --profile "$PROFILE" --filters "Name=vpc-id,Values=$vpc" --query "length(RouteTables[])" --output text
-    echo -n "InternetGateways:   "; aws ec2 describe-internet-gateways --region "$REGION" --profile "$PROFILE" --filters "Name=attachment.vpc-id,Values=$vpc" --query "length(InternetGateways[])" --output text
-    echo -n "NAT Gateways:       "; aws ec2 describe-nat-gateways --region "$REGION" --profile "$PROFILE" --filter "Name=vpc-id,Values=$vpc" --query "length(NatGateways[])" --output text
-    echo -n "VPC Endpoints:      "; aws ec2 describe-vpc-endpoints --region "$REGION" --profile "$PROFILE" --filters "Name=vpc-id,Values=$vpc" --query "length(VpcEndpoints[])" --output text
-    echo -n "SecurityGroups:     "; aws ec2 describe-security-groups --region "$REGION" --profile "$PROFILE" --filters "Name=vpc-id,Values=$vpc" --query "length(SecurityGroups[])" --output text
-    echo -n "NetworkInterfaces:  "; aws ec2 describe-network-interfaces --region "$REGION" --profile "$PROFILE" --filters "Name=vpc-id,Values=$vpc" --query "length(NetworkInterfaces[])" --output text
-    echo -n "ELBv2 LoadBalancers:"; aws elbv2 describe-load-balancers --region "$REGION" --profile "$PROFILE" --query "length(LoadBalancers[?VpcId==\`$vpc\`])" --output text
-  done
+  fail "kubectl cannot reach cluster (kubeconfig/cluster down)"
+  exit 1
 fi
 
-echo
-echo "== Backend sanity (bucket + lock table) =="
-if aws s3api head-bucket --bucket "$STATE_BUCKET" --profile "$PROFILE" >/dev/null 2>&1; then
-  echo "S3 bucket EXISTS: $STATE_BUCKET"
-  echo -n "Objects under environments/dev/: "
-  aws s3api list-objects-v2 --bucket "$STATE_BUCKET" --prefix "environments/dev/" --profile "$PROFILE" --query "length(Contents[])" --output text 2>/dev/null || echo "0"
+# metrics-server
+if kubectl top nodes >/dev/null 2>&1; then
+  pass "metrics-server working (kubectl top nodes)"
 else
-  echo "S3 bucket NOT FOUND: $STATE_BUCKET"
+  fail "metrics-server not working (run: ./bin/rsedp metrics)"
 fi
 
-if aws dynamodb describe-table --table-name "$LOCK_TABLE" --region "$REGION" --profile "$PROFILE" >/dev/null 2>&1; then
-  echo "DynamoDB lock table EXISTS: $LOCK_TABLE"
+# EBS CSI: either addon pods or CSI driver objects
+if kubectl -n kube-system get pods 2>/dev/null | grep -qi 'ebs-csi'; then
+  pass "EBS CSI pods present"
+elif kubectl get csidriver 2>/dev/null | grep -qi 'ebs'; then
+  pass "CSIDriver present (EBS)"
 else
-  echo "DynamoDB lock table NOT FOUND: $LOCK_TABLE"
+  fail "EBS CSI not detected (storage may not work)"
+fi
+
+# ALB controller
+if kubectl -n kube-system get deploy aws-load-balancer-controller >/dev/null 2>&1; then
+  pass "AWS Load Balancer Controller installed"
+else
+  fail "AWS Load Balancer Controller missing (run: ./bin/rsedp alb)"
+fi
+
+# Cluster Autoscaler
+if kubectl -n kube-system get deploy cluster-autoscaler >/dev/null 2>&1; then
+  pass "Cluster Autoscaler installed"
+else
+  fail "Cluster Autoscaler missing (run: ./bin/rsedp autoscaler)"
+fi
+
+# KEDA
+if kubectl -n keda get deploy keda-operator >/dev/null 2>&1; then
+  pass "KEDA installed"
+else
+  fail "KEDA missing (run: ./bin/rsedp sqs)"
+fi
+
+# Optional: SQS demo objects
+if kubectl -n default get scaledobject.keda.sh sqs-worker >/dev/null 2>&1; then
+  pass "SQS demo ScaledObject present"
+else
+  info "SQS demo ScaledObject not present (ok if you haven't run ./bin/rsedp sqs)"
+fi
+
+# Optional: ALB demo ingress hostname
+if kubectl -n demo-ingress get ingress web >/dev/null 2>&1; then
+  HOST="$(kubectl -n demo-ingress get ingress web -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)"
+  if [[ -n "${HOST}" ]]; then
+    pass "ALB demo ingress has hostname: ${HOST}"
+  else
+    info "ALB demo ingress exists but no hostname yet (ALB provisioning still running)"
+  fi
+else
+  info "ALB demo ingress not present (ok if you haven't run ./bin/rsedp demo-alb)"
 fi
 
 echo
-echo "== IAM quick scan (names containing replicasafe / cluster name) =="
-echo -n "Roles:   "
-aws iam list-roles --profile "$PROFILE" \
-  --query "Roles[?contains(RoleName, \`replicasafe\`) || contains(RoleName, \`$CLUSTER\`)].RoleName" --output text || true
-echo -n "Policies:"
-aws iam list-policies --profile "$PROFILE" --scope Local \
-  --query "Policies[?contains(PolicyName, \`replicasafe\`) || contains(PolicyName, \`$CLUSTER\`)].PolicyName" --output text || true
-
-echo
-echo "DONE. If EKS=NOT FOUND, VPC list is empty, all per-VPC counts are 0, and backend is NOT FOUND => clean slate."
+pass "Check complete."

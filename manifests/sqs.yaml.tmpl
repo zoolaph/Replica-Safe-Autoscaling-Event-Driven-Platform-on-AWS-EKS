@@ -1,0 +1,82 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sqs-worker
+  namespace: default
+  annotations:
+    eks.amazonaws.com/role-arn: ${ROLE_ARN}
+    eks.amazonaws.com/sts-regional-endpoints: "true"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sqs-worker
+  namespace: default
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: sqs-worker
+  template:
+    metadata:
+      labels:
+        app: sqs-worker
+    spec:
+      serviceAccountName: sqs-worker
+      containers:
+        - name: worker
+          image: amazon/aws-cli:2
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: AWS_REGION
+              value: ${AWS_REGION}
+            - name: QUEUE_URL
+              value: ${QUEUE_URL}
+          command: ["/bin/sh","-lc"]
+          args:
+            - |
+              echo "Starting SQS worker (receive+delete)...";
+              while true; do
+                RH="$(aws sqs receive-message \
+                  --region "$AWS_REGION" \
+                  --queue-url "$QUEUE_URL" \
+                  --max-number-of-messages 1 \
+                  --wait-time-seconds 20 \
+                  --query 'Messages[0].ReceiptHandle' \
+                  --output text || true)"
+                if [ "$RH" != "None" ] && [ -n "$RH" ]; then
+                  aws sqs delete-message --region "$AWS_REGION" --queue-url "$QUEUE_URL" --receipt-handle "$RH" >/dev/null
+                  echo "Deleted one message"
+                fi
+              done
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: aws-sqs-auth
+  namespace: default
+spec:
+  podIdentity:
+    provider: aws
+    identityOwner: workload
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: sqs-worker
+  namespace: default
+spec:
+  scaleTargetRef:
+    name: sqs-worker
+  pollingInterval: 10
+  cooldownPeriod: 60
+  minReplicaCount: 0
+  maxReplicaCount: 5
+  triggers:
+    - type: aws-sqs-queue
+      metadata:
+        queueURL: "${QUEUE_URL}"
+        queueLength: "5"
+        awsRegion: "${AWS_REGION}"
+      authenticationRef:
+        name: aws-sqs-auth
