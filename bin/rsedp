@@ -28,5 +28,6 @@ case "${cmd}" in
   bootstrap) exec "${ROOT_DIR}/scripts/bootstrap.sh" "$@" ;;
   env) exec "${ROOT_DIR}/scripts/env.sh" "$@" ;;
   metrics) exec "${ROOT_DIR}/scripts/metrics.sh" "$@" ;;
+  demo-storage) exec "${ROOT_DIR}/scripts/demo-storage.sh" "$@" ;;
   *) usage; echo "ERROR: Unknown command: ${cmd}"; exit 1 ;;
 esac
