@@ -27,5 +27,6 @@ case "${cmd}" in
   aws) exec "${ROOT_DIR}/scripts/aws.sh" "$@" ;;
   bootstrap) exec "${ROOT_DIR}/scripts/bootstrap.sh" "$@" ;;
   env) exec "${ROOT_DIR}/scripts/env.sh" "$@" ;;
+  metrics) exec "${ROOT_DIR}/scripts/metrics.sh" "$@" ;;
   *) usage; echo "ERROR: Unknown command: ${cmd}"; exit 1 ;;
 esac

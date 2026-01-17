@@ -1,16 +1,31 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-export AWS_PAGER="${AWS_PAGER:-}"
+usage() {
+  cat <<'H'
+Usage:
+  ./bin/rsedp metrics
 
-AWS_PROFILE="${AWS_PROFILE:-dev}"
-AWS_REGION="${AWS_REGION:-eu-west-3}"
-TF_DIR="${TF_DIR:-infra/environments/dev}"
+What it does:
+  - kubectl apply -f manifests/metrics.yaml
+  - waits for rollout in kube-system
+  - runs: kubectl top nodes (best-effort)
+H
+}
 
+case "${1:-}" in
+  -h|--help) usage; exit 0 ;;
+esac
 
-helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/
-helm repo update
+command -v kubectl >/dev/null 2>&1 || { echo "ERROR: kubectl not found"; exit 1; }
 
-helm upgrade --install metrics-server metrics-server/metrics-server \
-  -n kube-system --create-namespace \
-  -f platform/addons/metrics-server/values.yaml
+echo "==> Applying metrics-server manifest"
+kubectl apply -f manifests/metrics.yaml
+
+echo "==> Waiting for metrics-server rollout"
+kubectl -n kube-system rollout status deploy/metrics-server --timeout=180s
+
+echo "==> Quick check (kubectl top nodes)"
+kubectl top nodes || true
+
+echo "==> Metrics server installed."
