@@ -29,5 +29,6 @@ case "${cmd}" in
   env) exec "${ROOT_DIR}/scripts/env.sh" "$@" ;;
   metrics) exec "${ROOT_DIR}/scripts/metrics.sh" "$@" ;;
   demo-storage) exec "${ROOT_DIR}/scripts/demo-storage.sh" "$@" ;;
+  demo-alb) exec "${ROOT_DIR}/scripts/demo-alb.sh" "$@" ;;
   *) usage; echo "ERROR: Unknown command: ${cmd}"; exit 1 ;;
 esac
