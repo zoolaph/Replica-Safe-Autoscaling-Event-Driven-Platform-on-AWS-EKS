@@ -28,6 +28,20 @@ Common flags:
 H
 }
 
+detect_cluster_from_tfvars() {
+  local tfdir="$1"
+
+  # If terraform.tfvars exists and contains name = "..."
+  if [[ -f "$tfdir/terraform.tfvars" ]]; then
+    awk -F= '
+      $1 ~ /^[[:space:]]*name[[:space:]]*$/ {
+        gsub(/"/,"",$2); gsub(/[[:space:]]/,"",$2);
+        print $2; exit
+      }' "$tfdir/terraform.tfvars" 2>/dev/null || true
+  fi
+}
+
+
 parse_common_flags() {
   while [[ $# -gt 0 ]]; do
     case "$1" in

@@ -19,6 +19,24 @@ fi
 
 TF_DIR="${ROOT_DIR}/infra/environments/${ENV_NAME}"
 
+
+if [[ -z "${CLUSTER_NAME:-}" ]]; then
+  CLUSTER_NAME="$(terraform -chdir="$TF_DIR" output -raw cluster_name 2>/dev/null || true)"
+fi
+
+if [[ -z "${CLUSTER_NAME:-}" ]]; then
+  CLUSTER_NAME="$(detect_cluster_from_tfvars "$TF_DIR" || true)"
+fi
+
+# Final fallback (because your default is fixed)
+if [[ -z "${CLUSTER_NAME:-}" && "${ENV_NAME}" == "dev" ]]; then
+  CLUSTER_NAME="replicasafe-dev"
+fi
+
+[[ -n "${CLUSTER_NAME:-}" ]] || die "CLUSTER_NAME is empty. Pass --cluster or set terraform var 'name' (terraform.tfvars) / output 'cluster_name'."
+
+
+
 CLUSTER_NAME="${CLUSTER_NAME:-}"
 
 if [[ -z "$CLUSTER_NAME" ]]; then

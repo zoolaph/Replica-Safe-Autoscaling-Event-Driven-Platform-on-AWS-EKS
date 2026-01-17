@@ -49,6 +49,10 @@ main() {
       info "Destroying infra (env=${ENV_NAME}, region=${REGION})"
       exec "${ROOT_DIR}/scripts/infra/destroy-infra.sh" --env "${ENV_NAME}" --region "${REGION}"
       ;;
+    verify:platform)
+      info "Verifying platform (env=${ENV_NAME}, region=${REGION})"
+      exec "${ROOT_DIR}/scripts/platform/verify-platform.sh" --env "${ENV_NAME}" --region "${REGION}" ${CLUSTER_NAME:+--cluster "${CLUSTER_NAME}"}
+      ;;
     *)    
       usage
       die "Unknown command: ${cmd} ${sub}"
