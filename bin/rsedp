@@ -33,5 +33,7 @@ case "${cmd}" in
   demo-alb) exec "${ROOT_DIR}/scripts/demo-alb.sh" "$@" ;;
   autoscaler) exec "${ROOT_DIR}/scripts/autoscaler.sh" "$@" ;;
   demo-autoscaling) exec "${ROOT_DIR}/scripts/demo-autoscaling.sh" "$@" ;;
+  sqs) exec "${ROOT_DIR}/scripts/sqs.sh" "$@" ;;
+  pump-sqs) exec "${ROOT_DIR}/scripts/pump-sqs.sh" "$@" ;;
   *) usage; echo "ERROR: Unknown command: ${cmd}"; exit 1 ;;
 esac
