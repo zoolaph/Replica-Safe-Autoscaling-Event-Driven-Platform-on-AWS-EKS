@@ -27,3 +27,5 @@
 .envrc
 .env
 .env.*
+
+**/tfplan
