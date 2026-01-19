@@ -1,70 +1,69 @@
-diff --git a/bin/rsedp b/bin/rsedp
-index 1111111..2222222 100755
---- a/bin/rsedp
-+++ b/bin/rsedp
-@@ -1,27 +1,51 @@
- #!/usr/bin/env bash
- set -euo pipefail
- 
- ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
- 
- usage() {
-   cat <<'H'
- rsedp — simple command runner
- 
- Usage:
-   ./bin/rsedp <command>
- 
- Commands:
--  aws         Login to AWS (SSO)
-+  aws               Login to AWS (SSO)
-+  bootstrap         Bootstrap required tooling / prereqs
-+  env               Environment lifecycle helper (deploy/status/etc.)
-+  check             Quick sanity checks (cluster/infra readiness)
-+  destroy           Destroy demo resources + terraform environment
-+  all               Full dev install (no demos)
-+
-+  # Platform / demos
-+  metrics           Metrics stack helper
-+  demo-storage      Storage demo
-+  alb               ALB controller helper
-+  demo-alb          ALB demo
-+  autoscaler        Cluster Autoscaler helper
-+  demo-autoscaling  Autoscaling demo
-+  sqs               SQS demo helper
-+  pump-sqs          Pump messages into SQS (demo)
-+
-+  help              Show this help
- 
- Examples:
-   ./bin/rsedp aws
-+  ./bin/rsedp env
-+  ./bin/rsedp check
-+  ./bin/rsedp destroy
-   AWS_PROFILE=dev AWS_DEFAULT_REGION=eu-west-3 ./bin/rsedp aws
- H
- }
- 
- cmd="${1:-}"
- shift || true
- 
- case "${cmd}" in
--  ""|-h|--help) usage; exit 0 ;;
-+  ""|-h|--help|help) usage; exit 0 ;;
-   aws) exec "${ROOT_DIR}/scripts/aws.sh" "$@" ;;
-   bootstrap) exec "${ROOT_DIR}/scripts/bootstrap.sh" "$@" ;;
-   env) exec "${ROOT_DIR}/scripts/env.sh" "$@" ;;
-   metrics) exec "${ROOT_DIR}/scripts/metrics.sh" "$@" ;;
-   demo-storage) exec "${ROOT_DIR}/scripts/demo-storage.sh" "$@" ;;
-   alb) exec "${ROOT_DIR}/scripts/alb.sh" "$@" ;;
-   demo-alb) exec "${ROOT_DIR}/scripts/demo-alb.sh" "$@" ;;
-   autoscaler) exec "${ROOT_DIR}/scripts/autoscaler.sh" "$@" ;;
-   demo-autoscaling) exec "${ROOT_DIR}/scripts/demo-autoscaling.sh" "$@" ;;
-   sqs) exec "${ROOT_DIR}/scripts/sqs.sh" "$@" ;;
-   pump-sqs) exec "${ROOT_DIR}/scripts/pump-sqs.sh" "$@" ;;
-   check) exec "${ROOT_DIR}/scripts/check.sh" "$@" ;;
-   destroy) exec "${ROOT_DIR}/scripts/destroy.sh" "$@" ;;
-   all) exec "${ROOT_DIR}/scripts/all.sh" "$@" ;;
--  *) usage; echo "ERROR: Unknown command: ${cmd}"; exit 1 ;;
-+  *) usage; echo "ERROR: Unknown command: ${cmd}" >&2; exit 1 ;;
- esac
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+usage() {
+  cat <<'H'
+rsedp — simple command runner
+
+Usage:
+  ./bin/rsedp <command> [args...]
+
+Commands:
+  aws               Login to AWS (SSO)
+  bootstrap         Bootstrap required tooling / prereqs
+  env               Environment lifecycle helper (deploy/status/etc.)
+  check             Quick sanity checks (cluster/infra readiness)
+  destroy           Destroy demo resources + terraform environment
+  all               Full dev install (no demos)
+
+  # Platform / demos
+  metrics           Metrics stack helper
+  demo-storage      Storage demo
+  alb               ALB controller helper
+  demo-alb          ALB demo
+  autoscaler        Cluster Autoscaler helper
+  demo-autoscaling  Autoscaling demo
+  sqs               SQS demo helper
+  pump-sqs          Pump messages into SQS (demo)
+
+  help              Show this help
+
+Examples:
+  ./bin/rsedp aws
+  ./bin/rsedp env
+  ./bin/rsedp check
+  ./bin/rsedp destroy
+  AWS_PROFILE=dev AWS_DEFAULT_REGION=eu-west-3 ./bin/rsedp aws
+H
+}
+
+cmd="${1:-}"
+shift || true
+
+case "${cmd}" in
+  ""|-h|--help|help)
+    usage
+    exit 0
+    ;;
+  aws)              exec "${ROOT_DIR}/scripts/aws.sh" "$@" ;;
+  bootstrap)        exec "${ROOT_DIR}/scripts/bootstrap.sh" "$@" ;;
+  env)              exec "${ROOT_DIR}/scripts/env.sh" "$@" ;;
+  metrics)          exec "${ROOT_DIR}/scripts/metrics.sh" "$@" ;;
+  demo-storage)     exec "${ROOT_DIR}/scripts/demo-storage.sh" "$@" ;;
+  alb)              exec "${ROOT_DIR}/scripts/alb.sh" "$@" ;;
+  demo-alb)         exec "${ROOT_DIR}/scripts/demo-alb.sh" "$@" ;;
+  autoscaler)       exec "${ROOT_DIR}/scripts/autoscaler.sh" "$@" ;;
+  demo-autoscaling) exec "${ROOT_DIR}/scripts/demo-autoscaling.sh" "$@" ;;
+  sqs)              exec "${ROOT_DIR}/scripts/sqs.sh" "$@" ;;
+  pump-sqs)         exec "${ROOT_DIR}/scripts/pump-sqs.sh" "$@" ;;
+  check)            exec "${ROOT_DIR}/scripts/check.sh" "$@" ;;
+  destroy)          exec "${ROOT_DIR}/scripts/destroy.sh" "$@" ;;
+  all)              exec "${ROOT_DIR}/scripts/all.sh" "$@" ;;
+  *)
+    usage
+    echo "ERROR: Unknown command: ${cmd}" >&2
+    exit 1
+    ;;
+esac
