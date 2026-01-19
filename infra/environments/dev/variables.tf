@@ -4,6 +4,12 @@ variable "name" {
   default     = "replicasafe-dev"
 }
 
+variable "env_name" {
+  description = "Environment name used for naming/tagging resources."
+  type        = string
+  default     = "dev"
+}
+
 variable "vpc_cidr" {
   description = "VPC CIDR block"
   type        = string
