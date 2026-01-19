@@ -50,6 +50,7 @@ case "${cmd}" in
   aws)              exec "${ROOT_DIR}/scripts/aws.sh" "$@" ;;
   bootstrap)        exec "${ROOT_DIR}/scripts/bootstrap.sh" "$@" ;;
   env)              exec "${ROOT_DIR}/scripts/env.sh" "$@" ;;
+  audit)            exec "${ROOT_DIR}/scripts/audit.sh" "$@" ;;
   metrics)          exec "${ROOT_DIR}/scripts/metrics.sh" "$@" ;;
   demo-storage)     exec "${ROOT_DIR}/scripts/demo-storage.sh" "$@" ;;
   alb)              exec "${ROOT_DIR}/scripts/alb.sh" "$@" ;;
