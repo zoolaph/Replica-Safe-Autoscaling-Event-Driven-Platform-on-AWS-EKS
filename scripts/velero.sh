@@ -7,14 +7,6 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_NAME="${ENV_NAME:-dev}"
 ENV_DIR="${ROOT_DIR}/infra/environments/${ENV_NAME}"
 
-BUCKET="$(terraform -chdir="${ENV_DIR}" output -raw velero_bucket_name)"
-REGION="${AWS_DEFAULT_REGION:-$(terraform -chdir="${ENV_DIR}" output -raw region 2>/dev/null || echo eu-west-3)}"
-
-TMP="$(mktemp)"
-export VELERO_BUCKET="${BUCKET}"
-export AWS_REGION="${REGION}"
-
-
 usage() {
   cat <<'H'
 Usage:
@@ -38,6 +30,21 @@ Notes:
 H
 }
 
+# show help without touching terraform/helm/kubectl/kubeconfig
+for a in "$@"; do
+  case "$a" in
+    -h|--help) usage; exit 0 ;;
+  esac
+done
+
+
+
+BUCKET="$(terraform -chdir="${ENV_DIR}" output -raw velero_bucket_name)"
+REGION="${AWS_DEFAULT_REGION:-$(terraform -chdir="${ENV_DIR}" output -raw region 2>/dev/null || echo eu-west-3)}"
+
+TMP="$(mktemp)"
+export VELERO_BUCKET="${BUCKET}"
+export AWS_REGION="${REGION}"
 
 envsubst < "${ROOT_DIR}/platform/addons/velero/values.yaml.tmpl" > "${TMP}"
 
