@@ -149,6 +149,20 @@ k8s_cleanup() {
   kubectl delete deploy sqs-worker -n default --ignore-not-found=true >/dev/null 2>&1 || true
   kubectl delete sa sqs-worker -n default --ignore-not-found=true >/dev/null 2>&1 || true
 
+
+  # --- Velero cleanup (best-effort) ---
+  if command -v kubectl >/dev/null 2>&1 && kubectl get ns velero >/dev/null 2>&1; then
+    echo "[INFO] Uninstalling velero (helm) ..."
+    if command -v helm >/dev/null 2>&1 && helm -n velero status velero >/dev/null 2>&1; then
+      helm -n velero uninstall velero || true
+    fi
+
+    echo "[INFO] Deleting velero namespace (optional) ..."
+    kubectl delete ns velero --ignore-not-found --wait=false || true
+  else
+    echo "[INFO] Skipping velero cleanup (cluster not reachable or ns missing)"
+  fi
+
   if [[ "${DO_WAIT_K8S}" == "true" ]]; then
     log "Waiting up to ${K8S_WAIT_TIMEOUT_SEC}s for demo namespaces to terminate (best-effort)"
     local end=$((SECONDS + K8S_WAIT_TIMEOUT_SEC))
@@ -160,6 +174,8 @@ k8s_cleanup() {
       sleep 3
     done
   fi
+
+
 }
 
 if [[ "${DO_K8S_CLEANUP}" == "true" ]]; then
@@ -186,3 +202,5 @@ terraform -chdir="${ENV_DIR}" destroy -auto-approve -input=false -no-color
 
 log "Destroy complete."
 log "NOTE: Terraform backend (S3 state bucket + DynamoDB lock table) is intentionally NOT destroyed."
+
+

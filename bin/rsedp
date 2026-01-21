@@ -27,7 +27,8 @@ Commands:
   demo-autoscaling  Autoscaling demo
   sqs               SQS demo helper
   pump-sqs          Pump messages into SQS (demo)
-
+  velero
+  demo-velero 
   help              Show this help
 
 Examples:
