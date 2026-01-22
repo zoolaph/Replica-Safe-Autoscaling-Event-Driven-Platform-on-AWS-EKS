@@ -4,7 +4,7 @@ data "aws_region" "current" {}
 locals {
   velero_namespace = "velero"
   velero_sa_name   = "velero"
-  velero_bucket    = lower("rsedp-velero-${var.env_name}-${data.aws_caller_identity.current.account_id}-${data.aws_region.current.name}")
+  velero_bucket    = lower("rsedp-velero-${var.env_name}-${data.aws_caller_identity.current.account_id}-${data.aws_region.current.region}")
 }
 
 resource "aws_s3_bucket" "velero" {
@@ -103,10 +103,10 @@ resource "kubernetes_namespace_v1" "velero" {
   metadata { name = local.velero_namespace }
 }
 
-resource "kubernetes_service_account" "velero" {
+resource "kubernetes_service_account_v1" "velero" {
   metadata {
     name      = local.velero_sa_name
-    namespace = kubernetes_namespace.velero.metadata[0].name
+    namespace = kubernetes_namespace_v1.velero.metadata[0].name
     annotations = {
       "eks.amazonaws.com/role-arn" = aws_iam_role.velero.arn
     }
@@ -114,4 +114,4 @@ resource "kubernetes_service_account" "velero" {
 }
 
 output "velero_bucket_name" { value = aws_s3_bucket.velero.bucket }
-output "velero_role_arn"    { value = aws_iam_role.velero.arn }
+output "velero_role_arn" { value = aws_iam_role.velero.arn }
