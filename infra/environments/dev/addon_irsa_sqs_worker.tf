@@ -58,7 +58,3 @@ resource "aws_iam_role_policy_attachment" "sqs_worker" {
   role       = aws_iam_role.sqs_worker.name
   policy_arn = aws_iam_policy.sqs_worker.arn
 }
-
-output "sqs_worker_role_arn" {
-  value = aws_iam_role.sqs_worker.arn
-}

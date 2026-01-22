@@ -108,5 +108,21 @@ else
   info "ALB demo ingress not present (ok if you haven't run ./bin/rsedp demo-alb)"
 fi
 
+# --- Velero checks ---
+if kubectl get ns velero >/dev/null 2>&1; then
+  kubectl -n velero rollout status deploy/velero --timeout=2m >/dev/null \
+    && pass "velero deployment ready" \
+    || fail "velero deployment not ready"
+
+  bsl_phase="$(kubectl -n velero get backupstoragelocation default -o jsonpath='{.status.phase}' 2>/dev/null || echo missing)"
+  if [ "${bsl_phase}" = "Available" ]; then
+    pass "velero backupstoragelocation default: Available"
+  else
+    fail "velero backupstoragelocation default not Available (phase=${bsl_phase})"
+  fi
+else
+  info "velero not installed (namespace missing)"
+fi
+
 echo
 pass "Check complete."

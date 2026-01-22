@@ -26,8 +26,7 @@ run() {
   "${ROOT_DIR}/bin/rsedp" "${cmd}"
 }
 
-run aws
-run bootstrap
+#run aws
 run env
 run metrics
 run alb
