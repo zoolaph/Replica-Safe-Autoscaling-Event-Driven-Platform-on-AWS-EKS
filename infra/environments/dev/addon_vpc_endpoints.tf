@@ -1,13 +1,12 @@
 data "aws_region" "current" {}
 
-# Interface endpoints need an SG to allow HTTPS from inside the VPC
 resource "aws_security_group" "vpc_endpoints" {
   name        = "rsedp-${var.env_name}-vpc-endpoints"
   description = "Allow HTTPS to VPC interface endpoints from inside the VPC"
   vpc_id      = module.vpc.vpc_id
 
   ingress {
-    description = "HTTPS from VPC"
+    description = "HTTPS from VPC CIDR"
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
@@ -28,13 +27,12 @@ resource "aws_security_group" "vpc_endpoints" {
   }
 }
 
-# S3 = Gateway endpoint (route-table based)
+# S3 gateway endpoint (routes in private RTs -> no NAT for S3)
 resource "aws_vpc_endpoint" "s3" {
   vpc_id            = module.vpc.vpc_id
   vpc_endpoint_type = "Gateway"
   service_name      = "com.amazonaws.${data.aws_region.current.name}.s3"
 
-  # Attach to private route tables so private subnets hit S3 without NAT
   route_table_ids = module.vpc.private_route_table_ids
 
   tags = {
@@ -44,7 +42,7 @@ resource "aws_vpc_endpoint" "s3" {
   }
 }
 
-# Interface endpoints = ENIs in your private subnets
+# Interface endpoints (ENIs in private subnets -> no NAT for these services)
 locals {
   interface_endpoints = toset([
     "ecr.api",
