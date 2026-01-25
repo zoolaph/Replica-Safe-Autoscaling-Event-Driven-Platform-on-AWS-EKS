@@ -124,5 +124,65 @@ else
   info "velero not installed (namespace missing)"
 fi
 
+
+# ---- VPC Endpoints checks (AWS-side, before kubectl) ----
+require_cmd() { command -v "$1" >/dev/null 2>&1 || { echo "[FAIL] missing: $1"; exit 1; }; }
+
+require_cmd aws
+require_cmd terraform
+
+ENV_DIR="${ENV_DIR:-infra/environments/dev}"
+
+info "[AWS] Checking VPC endpoints exist (reduce NAT spend)..."
+pushd "$ENV_DIR" >/dev/null
+
+# Grab vpc id from outputs (ground truth)
+VPC_ID="$(terraform output -raw vpc_id 2>/dev/null || true)"
+REGION="$(terraform output -raw region 2>/dev/null || true)"
+
+if [[ -z "${VPC_ID}" ]]; then
+  fail "Could not read terraform output vpc_id (did you run terraform apply?)"
+  popd >/dev/null
+  exit 1
+fi
+
+# Describe all endpoints in that VPC
+ENDPOINTS_JSON="$(aws ec2 describe-vpc-endpoints --region "${REGION}" \
+  --filters "Name=vpc-id,Values=${VPC_ID}" \
+  --query 'VpcEndpoints[].{Service:ServiceName,Type:VpcEndpointType,State:State,PrivateDns:PrivateDnsEnabled,Id:VpcEndpointId}' \
+  --output json)"
+
+popd >/dev/null
+
+# helper: check presence
+has_service() { echo "$ENDPOINTS_JSON" | jq -e --arg s "$1" '.[] | select(.Service==$s)' >/dev/null; }
+get_field()   { echo "$ENDPOINTS_JSON" | jq -r --arg s "$1" --arg f "$2" '.[] | select(.Service==$s) | .[$f]'; }
+
+# Expected service names
+S3="com.amazonaws.${REGION}.s3"
+ECR_API="com.amazonaws.${REGION}.ecr.api"
+ECR_DKR="com.amazonaws.${REGION}.ecr.dkr"
+STS="com.amazonaws.${REGION}.sts"
+
+# S3 gateway endpoint
+if has_service "$S3"; then
+  [[ "$(get_field "$S3" "Type")" == "Gateway" ]] || fail "S3 endpoint exists but is not Gateway"
+  pass "S3 gateway endpoint present"
+else
+  fail "Missing S3 gateway endpoint (${S3})"
+fi
+
+# Interface endpoints
+for svc in "$ECR_API" "$ECR_DKR" "$STS"; do
+  if has_service "$svc"; then
+    [[ "$(get_field "$svc" "Type")" == "Interface" ]] || fail "$svc exists but is not Interface"
+    [[ "$(get_field "$svc" "PrivateDns")" == "true" ]] || fail "$svc exists but PrivateDnsEnabled is not true"
+    pass "Interface endpoint OK: $svc"
+  else
+    fail "Missing interface endpoint: $svc"
+  fi
+done
+
+
 echo
 pass "Check complete."
