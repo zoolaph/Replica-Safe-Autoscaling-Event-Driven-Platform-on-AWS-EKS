@@ -27,8 +27,10 @@ Commands:
   demo-autoscaling  Autoscaling demo
   sqs               SQS demo helper
   pump-sqs          Pump messages into SQS (demo)
-  velero
-  demo-velero 
+  velero            Velero backup/restore helper
+  demo-velero       Velero backup/restore helper 
+  observability     Observability stack helper
+  audit             Audit logging helper
   help              Show this help
 
 Examples:
