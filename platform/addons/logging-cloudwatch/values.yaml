@@ -4,22 +4,11 @@ serviceAccount:
   create: true
   name: aws-for-fluent-bit
   annotations: {}
-  # IRSA will be injected by the install script if CLOUDWATCH_ROLE_ARN is set.
 
 cloudWatch:
   enabled: true
-  region: ""                 # set by script from AWS_DEFAULT_REGION
+  region: ""                 
   autoCreateGroup: true
   logStreamPrefix: "fb-"
-  # logGroupTemplate is set by script to:
-  #   /aws/eks/<cluster>/$(kubernetes['namespace_name'])
-  # This creates per-namespace log groups (kube-system + apps)
   logGroupTemplate: ""
-  logGroupName: ""           # unused when template is set
-
-# Optional: reduce noise if you want later
-# extraFilters: |
-#   [FILTER]
-#       Name    grep
-#       Match   *
-#       Exclude $kubernetes['namespace_name'] kube-system
+  logGroupName: ""           
