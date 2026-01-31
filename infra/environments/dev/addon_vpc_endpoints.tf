@@ -1,5 +1,3 @@
-data "aws_region" "current" {}
-
 resource "aws_security_group" "vpc_endpoints" {
   name        = "rsedp-${var.env_name}-vpc-endpoints"
   description = "Allow HTTPS to VPC interface endpoints from inside the VPC"

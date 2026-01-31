@@ -1,0 +1,14 @@
+# aws-for-fluent-bit baseline -> CloudWatch Logs
+
+serviceAccount:
+  create: true
+  name: aws-for-fluent-bit
+  annotations: {}
+
+cloudWatch:
+  enabled: true
+  region: ""                 
+  autoCreateGroup: true
+  logStreamPrefix: "fb-"
+  logGroupTemplate: ""
+  logGroupName: ""           

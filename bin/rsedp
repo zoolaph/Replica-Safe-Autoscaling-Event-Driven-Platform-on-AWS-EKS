@@ -31,6 +31,7 @@ Commands:
   demo-velero       Velero backup/restore helper 
   observability     Observability stack helper
   audit             Audit logging helper
+  observability-demo  Observability demo helper
   help              Show this help
 
 Examples:
