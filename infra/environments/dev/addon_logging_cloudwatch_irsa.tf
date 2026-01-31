@@ -7,8 +7,6 @@ locals {
   fluentbit_irsa_role_name = "rsedp-${var.env_name}-fluentbit-cloudwatch"
 }
 
-data "aws_caller_identity" "current" {}
-data "aws_region" "current" {}
 
 # Trust policy for IRSA
 data "aws_iam_policy_document" "fluentbit_assume_role" {
@@ -43,8 +41,8 @@ resource "aws_iam_role" "fluentbit_cloudwatch" {
 # Least-privilege policy for CloudWatch Logs write
 data "aws_iam_policy_document" "fluentbit_cloudwatch" {
   statement {
-    sid     = "CloudWatchLogsWrite"
-    effect  = "Allow"
+    sid    = "CloudWatchLogsWrite"
+    effect = "Allow"
     actions = [
       "logs:CreateLogGroup",
       "logs:CreateLogStream",
