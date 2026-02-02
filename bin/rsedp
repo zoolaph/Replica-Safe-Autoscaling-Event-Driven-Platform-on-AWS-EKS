@@ -32,6 +32,7 @@ Commands:
   observability     Observability stack helper
   audit             Audit logging helper
   observability-demo  Observability demo helper
+  logging           Logging stack helper
   help              Show this help
 
 Examples:
@@ -67,6 +68,8 @@ case "${cmd}" in
   demo-velero)      exec "${ROOT_DIR}/scripts/demo-velero.sh" "$@" ;;
   check)            exec "${ROOT_DIR}/scripts/check.sh" "$@" ;;
   destroy)          exec "${ROOT_DIR}/scripts/destroy.sh" "$@" ;;
+  observability)    exec "${ROOT_DIR}/scripts/install-observability.sh" "$@" ;;
+  logging)          exec "${ROOT_DIR}/scripts/install-logging.sh" "$@" ;;
   all)              exec "${ROOT_DIR}/scripts/all.sh" "$@" ;;
   *)
     usage
