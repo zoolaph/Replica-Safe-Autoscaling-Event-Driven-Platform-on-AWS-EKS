@@ -1,14 +1,9 @@
-# Fluent Bit -> CloudWatch IRSA
-#############################################
-
 locals {
   fluentbit_namespace      = "logging"
   fluentbit_sa_name        = "aws-for-fluent-bit"
   fluentbit_irsa_role_name = "rsedp-${var.env_name}-fluentbit-cloudwatch"
 }
 
-
-# Trust policy for IRSA
 data "aws_iam_policy_document" "fluentbit_assume_role" {
   statement {
     effect  = "Allow"
@@ -38,7 +33,6 @@ resource "aws_iam_role" "fluentbit_cloudwatch" {
   assume_role_policy = data.aws_iam_policy_document.fluentbit_assume_role.json
 }
 
-# Least-privilege policy for CloudWatch Logs write
 data "aws_iam_policy_document" "fluentbit_cloudwatch" {
   statement {
     sid    = "CloudWatchLogsWrite"
@@ -51,7 +45,6 @@ data "aws_iam_policy_document" "fluentbit_cloudwatch" {
       "logs:DescribeLogGroups"
     ]
 
-    # We target only /aws/eks/<cluster>/* log groups created by this addon
     resources = [
       "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/eks/${module.eks.cluster_name}/*",
       "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/eks/${module.eks.cluster_name}/*:*"

@@ -1,5 +1,3 @@
-# aws-for-fluent-bit baseline -> CloudWatch Logs
-
 serviceAccount:
   create: true
   name: aws-for-fluent-bit
@@ -7,8 +5,8 @@ serviceAccount:
 
 cloudWatch:
   enabled: true
-  region: ""                 
+  region: ""                 # set by install script
   autoCreateGroup: true
   logStreamPrefix: "fb-"
-  logGroupTemplate: ""
-  logGroupName: ""           
+  logGroupTemplate: ""       # set by install script: /aws/eks/<cluster>/$(namespace)
+  logGroupName: ""           # unused when template is set
