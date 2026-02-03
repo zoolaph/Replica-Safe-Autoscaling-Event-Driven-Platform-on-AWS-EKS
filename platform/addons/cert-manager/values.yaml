@@ -1,0 +1,7 @@
+installCRDs: true
+
+# dev baseline (tighten later)
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
