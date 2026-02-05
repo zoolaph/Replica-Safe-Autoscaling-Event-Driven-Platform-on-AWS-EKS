@@ -33,6 +33,8 @@ Commands:
   audit             Audit logging helper
   observability-demo  Observability demo helper
   logging           Logging stack helper
+  cert-manager  Install cert-manager (required for ALB demo)
+  external-dns  Install external-dns (required for ALB demo)
   help              Show this help
 
 Examples:
@@ -70,6 +72,9 @@ case "${cmd}" in
   destroy)          exec "${ROOT_DIR}/scripts/destroy.sh" "$@" ;;
   observability)    exec "${ROOT_DIR}/scripts/install-observability.sh" "$@" ;;
   logging)          exec "${ROOT_DIR}/scripts/install-logging.sh" "$@" ;;
+  cert-manager)     exec "${ROOT_DIR}/scripts/install-cert-manager.sh" "$@" ;;
+  external-dns)     exec "${ROOT_DIR}/scripts/install-external-dns.sh" "$@" ;;
+  observability-demo) exec "${ROOT_DIR}/scripts/demo-observability.sh" "$@" ;;
   all)              exec "${ROOT_DIR}/scripts/all.sh" "$@" ;;
   *)
     usage

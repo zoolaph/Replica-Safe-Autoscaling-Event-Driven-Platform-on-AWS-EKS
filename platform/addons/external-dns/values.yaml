@@ -1,0 +1,25 @@
+provider: aws
+
+# ServiceAccount created by chart; IRSA role annotation injected by install script (recommended)
+serviceAccount:
+  create: true
+  name: external-dns
+  annotations: {}
+
+# Only manage records from Ingress
+sources:
+  - ingress
+
+policy: upsert-only
+
+# Use TXT registry to avoid clobbering others
+registry: txt
+txtOwnerId: "rsedp"
+
+# Set these via install script:
+domainFilters: []
+zoneIdFilters: []
+
+# Good defaults
+interval: "1m"
+logLevel: info
