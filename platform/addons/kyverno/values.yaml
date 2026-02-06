@@ -1,0 +1,10 @@
+# Minimal Kyverno baseline
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+
+# Keep default webhook behavior
+# (We want clear admission failure messages)
