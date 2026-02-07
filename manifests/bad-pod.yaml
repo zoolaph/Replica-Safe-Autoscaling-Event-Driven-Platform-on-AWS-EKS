@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo-security
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-pod
+  namespace: demo-security
+spec:
+  containers:
+    - name: bad
+      image: nginx:latest
+      securityContext:
+        privileged: true
+      command: ["sh","-c","echo hello && sleep 3600"]
