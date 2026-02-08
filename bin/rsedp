@@ -75,6 +75,9 @@ case "${cmd}" in
   cert-manager)     exec "${ROOT_DIR}/scripts/install-cert-manager.sh" "$@" ;;
   external-dns)     exec "${ROOT_DIR}/scripts/install-external-dns.sh" "$@" ;;
   observability-demo) exec "${ROOT_DIR}/scripts/demo-observability.sh" "$@" ;;
+  install-kymara)      exec "${ROOT_DIR}/scripts/install-kymara.sh" "$@" ;;
+  enable-kymara)       exec "${ROOT_DIR}/scripts/enable-kymara.sh" "$@" ;;
+  apply-policies)      exec "${ROOT_DIR}/scripts/apply-policies.sh" "$@" ;;
   all)              exec "${ROOT_DIR}/scripts/all.sh" "$@" ;;
   *)
     usage

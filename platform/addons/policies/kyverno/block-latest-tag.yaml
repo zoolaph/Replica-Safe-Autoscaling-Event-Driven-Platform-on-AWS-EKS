@@ -1,0 +1,29 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: block-latest-tag
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: block-latest
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kyverno
+      validate:
+        message: "Image tags must not use ':latest'. Pin a version tag."
+        deny:
+          conditions:
+            any:
+              - key: "{{ images.containers.*.tag[] }}"
+                operator: AnyIn
+                value:
+                  - latest
