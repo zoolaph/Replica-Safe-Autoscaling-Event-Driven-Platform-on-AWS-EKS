@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: demo-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      serviceAccountName: sqs-worker   # you already have this from your IRSA SQS addon
+      containers:
+      - name: worker
+        image: YOUR_ECR/worker:dev
+        env:
+        - name: AWS_REGION
+          value: eu-west-3
+        - name: SQS_QUEUE_URL
+          valueFrom:
+            secretKeyRef:
+              name: demo-app-secrets
+              key: sqs_queue_url
+        - name: PGHOST
+          value: postgres
+        - name: PGDATABASE
+          value: app
+        - name: PGUSER
+          value: app
+        - name: PGPASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: demo-app-secrets
+              key: pg_password
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 300m
+            memory: 512Mi
