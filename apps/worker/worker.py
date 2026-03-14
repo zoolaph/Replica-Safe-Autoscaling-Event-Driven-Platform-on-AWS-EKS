@@ -34,40 +34,42 @@ def db_conn():
 
 def main():
     print(f"[worker] starting mode={WORKER_MODE}", flush=True)
-    with db_conn() as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS events (
-              id BIGSERIAL PRIMARY KEY,
-              event_id TEXT NOT NULL UNIQUE,
-              type TEXT NOT NULL,
-              payload JSONB NOT NULL,
-              ts BIGINT NOT NULL
-            );
-        """)
-        conn.commit()
 
-    while True:
-        resp = sqs.receive_message(
-            QueueUrl=SQS_QUEUE_URL,
-            MaxNumberOfMessages=BATCH_SIZE,
-            WaitTimeSeconds=WAIT_TIME_SECONDS,
-            VisibilityTimeout=VISIBILITY_TIMEOUT,
-        )
-        msgs = resp.get("Messages", [])
-        if not msgs:
-            continue
+    # One connection for the lifetime of this process.
+    conn = db_conn()
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS events (
+          id BIGSERIAL PRIMARY KEY,
+          event_id TEXT NOT NULL UNIQUE,
+          type TEXT NOT NULL,
+          payload JSONB NOT NULL,
+          ts BIGINT NOT NULL
+        );
+    """)
+    conn.commit()
 
-        for m in msgs:
-            receipt = m["ReceiptHandle"]
-            body = m["Body"]
-            try:
-                evt = json.loads(body)
-                event_id = evt.get("event_id", "missing")
-                etype = evt.get("type", "unknown")
-                payload = evt.get("payload", {})
-                ts = int(evt.get("ts", int(time.time())))
+    try:
+        while True:
+            resp = sqs.receive_message(
+                QueueUrl=SQS_QUEUE_URL,
+                MaxNumberOfMessages=BATCH_SIZE,
+                WaitTimeSeconds=WAIT_TIME_SECONDS,
+                VisibilityTimeout=VISIBILITY_TIMEOUT,
+            )
+            msgs = resp.get("Messages", [])
+            if not msgs:
+                continue
 
-                with db_conn() as conn:
+            for m in msgs:
+                receipt = m["ReceiptHandle"]
+                body = m["Body"]
+                try:
+                    evt = json.loads(body)
+                    event_id = evt.get("event_id", "missing")
+                    etype = evt.get("type", "unknown")
+                    payload = evt.get("payload", {})
+                    ts = int(evt.get("ts", int(time.time())))
+
                     if WORKER_MODE == "idempotent":
                         cur = conn.execute(
                             "INSERT INTO events(event_id, type, payload, ts)"
@@ -89,11 +91,19 @@ def main():
                         conn.commit()
                         print(f"[worker] processed event_id={event_id} type={etype}", flush=True)
 
-                sqs.delete_message(QueueUrl=SQS_QUEUE_URL, ReceiptHandle=receipt)
-            except Exception as e:
-                print(f"[worker] ERROR processing message: {e}", flush=True)
-                # don't delete; it will retry
-                continue
+                    sqs.delete_message(QueueUrl=SQS_QUEUE_URL, ReceiptHandle=receipt)
+
+                except psycopg.OperationalError as e:
+                    # Connection dropped — reconnect. Message stays in queue and retries.
+                    print(f"[worker] DB connection lost, reconnecting: {e}", flush=True)
+                    conn = db_conn()
+
+                except Exception as e:
+                    print(f"[worker] ERROR processing message: {e}", flush=True)
+                    # don't delete; it will retry
+                    continue
+    finally:
+        conn.close()
 
 if __name__ == "__main__":
     main()
