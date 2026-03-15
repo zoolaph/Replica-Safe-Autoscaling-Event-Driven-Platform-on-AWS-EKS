@@ -7,8 +7,7 @@ AWS_REGION = os.getenv("AWS_REGION", "eu-west-3")
 SQS_QUEUE_URL = os.getenv("SQS_QUEUE_URL", "")
 
 if not SQS_QUEUE_URL:
-    # We allow boot even if missing; endpoint will error until configured.
-    pass
+    raise SystemExit("SQS_QUEUE_URL not set")
 
 sqs = boto3.client("sqs", region_name=AWS_REGION)
 app = FastAPI(title="rsedp-demo-api")
