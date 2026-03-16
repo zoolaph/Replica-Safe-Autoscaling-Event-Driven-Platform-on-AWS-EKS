@@ -1,6 +1,7 @@
 import os, json, uuid, time
 import boto3
-from fastapi import FastAPI
+from botocore.exceptions import ClientError
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 AWS_REGION = os.getenv("AWS_REGION", "eu-west-3")
@@ -30,8 +31,11 @@ def create_event(ev: EventIn):
         "ts": int(time.time()),
     }
 
-    sqs.send_message(
-        QueueUrl=SQS_QUEUE_URL,
-        MessageBody=json.dumps(msg),
-    )
+    try:
+        sqs.send_message(
+            QueueUrl=SQS_QUEUE_URL,
+            MessageBody=json.dumps(msg),
+        )
+    except ClientError as e:
+        raise HTTPException(status_code=503, detail=f"SQS unavailable: {e.response['Error']['Code']}")
     return {"sent": True, "event_id": event_id}
