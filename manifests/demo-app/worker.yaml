@@ -1,3 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: db-migrations
+  namespace: demo-app
+data:
+  001_create_events.sql: |
+    CREATE TABLE IF NOT EXISTS events (
+      id BIGSERIAL PRIMARY KEY,
+      event_id TEXT NOT NULL UNIQUE,
+      type TEXT NOT NULL,
+      payload JSONB NOT NULL,
+      ts BIGINT NOT NULL
+    );
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -13,7 +28,20 @@ spec:
       labels:
         app: worker
     spec:
-      serviceAccountName: sqs-worker   # you already have this from your IRSA SQS addon
+      serviceAccountName: sqs-worker   # IRSA SA: sqs:ReceiveMessage + sqs:DeleteMessage
+      initContainers:
+      - name: migrate
+        image: postgres:16
+        command: ["psql", "-h", "postgres", "-U", "app", "-d", "app", "-f", "/migrations/001_create_events.sql"]
+        env:
+        - name: PGPASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: demo-app-secrets
+              key: pg_password
+        volumeMounts:
+        - name: migrations
+          mountPath: /migrations
       containers:
       - name: worker
         image: YOUR_ECR/worker:dev
@@ -36,6 +64,8 @@ spec:
             secretKeyRef:
               name: demo-app-secrets
               key: pg_password
+        - name: WORKER_MODE
+          value: idempotent
         resources:
           requests:
             cpu: 50m
@@ -43,3 +73,7 @@ spec:
           limits:
             cpu: 300m
             memory: 512Mi
+      volumes:
+      - name: migrations
+        configMap:
+          name: db-migrations

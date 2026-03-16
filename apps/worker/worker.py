@@ -36,17 +36,8 @@ def main():
     print(f"[worker] starting mode={WORKER_MODE}", flush=True)
 
     # One connection for the lifetime of this process.
+    # Table is created by the migrate init container before this pod starts.
     conn = db_conn()
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS events (
-          id BIGSERIAL PRIMARY KEY,
-          event_id TEXT NOT NULL UNIQUE,
-          type TEXT NOT NULL,
-          payload JSONB NOT NULL,
-          ts BIGINT NOT NULL
-        );
-    """)
-    conn.commit()
 
     try:
         while True:
