@@ -13,7 +13,7 @@ spec:
       labels:
         app: api
     spec:
-      serviceAccountName: sqs-worker # reuse if you already have IRSA SA; otherwise default
+      serviceAccountName: demo-api   # IRSA SA: sqs:SendMessage only (see addon_irsa_sqs_api.tf)
       containers:
       - name: api
         image: YOUR_ECR/api:dev

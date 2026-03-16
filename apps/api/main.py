@@ -1,6 +1,6 @@
 import os, json, uuid, time
 import boto3
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from pydantic import BaseModel
 
 AWS_REGION = os.getenv("AWS_REGION", "eu-west-3")
@@ -22,9 +22,6 @@ def healthz():
 
 @app.post("/events")
 def create_event(ev: EventIn):
-    if not SQS_QUEUE_URL:
-        raise HTTPException(status_code=500, detail="SQS_QUEUE_URL not set")
-
     event_id = str(uuid.uuid4())
     msg = {
         "event_id": event_id,
