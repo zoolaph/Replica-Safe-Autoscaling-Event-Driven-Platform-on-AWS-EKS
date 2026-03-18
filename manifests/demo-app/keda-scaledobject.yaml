@@ -1,0 +1,37 @@
+# TriggerAuthentication: tells KEDA to use the target pod's IRSA role (sqs-worker SA)
+# to call sqs:GetQueueAttributes. No separate KEDA IAM role needed.
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: keda-aws-sqs
+  namespace: demo-app
+spec:
+  podIdentity:
+    provider: aws-eks
+---
+# ScaledObject: scale workers based on SQS queue depth.
+# minReplicaCount: 0  → scale to zero when queue is empty (cost saving)
+# queueLength: 5      → target 5 messages per worker replica
+# pollingInterval: 15 → KEDA checks queue every 15 seconds
+# cooldownPeriod: 60  → wait 60 seconds of idleness before scaling down
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker
+  namespace: demo-app
+spec:
+  scaleTargetRef:
+    name: worker
+  minReplicaCount: 0
+  maxReplicaCount: 10
+  pollingInterval: 15
+  cooldownPeriod: 60
+  triggers:
+  - type: aws-sqs-queue
+    authenticationRef:
+      name: keda-aws-sqs
+    metadata:
+      queueURL: "REPLACE_ME_WITH_SQS_QUEUE_URL"
+      queueLength: "5"
+      awsRegion: eu-west-3
+      identityOwner: pod   # use the worker pod's sqs-worker IRSA role

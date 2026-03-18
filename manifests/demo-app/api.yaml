@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: demo-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+    spec:
+      serviceAccountName: demo-api   # IRSA SA: sqs:SendMessage only (see addon_irsa_sqs_api.tf)
+      containers:
+      - name: api
+        image: YOUR_ECR/api:dev
+        ports:
+        - containerPort: 8080
+        env:
+        - name: AWS_REGION
+          value: eu-west-3
+        - name: SQS_QUEUE_URL
+          valueFrom:
+            secretKeyRef:
+              name: demo-app-secrets
+              key: sqs_queue_url
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 300m
+            memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  namespace: demo-app
+spec:
+  selector:
+    app: api
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080

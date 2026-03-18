@@ -1,0 +1,79 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: db-migrations
+  namespace: demo-app
+data:
+  001_create_events.sql: |
+    CREATE TABLE IF NOT EXISTS events (
+      id BIGSERIAL PRIMARY KEY,
+      event_id TEXT NOT NULL UNIQUE,
+      type TEXT NOT NULL,
+      payload JSONB NOT NULL,
+      ts BIGINT NOT NULL
+    );
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: demo-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      serviceAccountName: sqs-worker   # IRSA SA: sqs:ReceiveMessage + sqs:DeleteMessage
+      initContainers:
+      - name: migrate
+        image: postgres:16
+        command: ["psql", "-h", "postgres", "-U", "app", "-d", "app", "-f", "/migrations/001_create_events.sql"]
+        env:
+        - name: PGPASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: demo-app-secrets
+              key: pg_password
+        volumeMounts:
+        - name: migrations
+          mountPath: /migrations
+      containers:
+      - name: worker
+        image: YOUR_ECR/worker:dev
+        env:
+        - name: AWS_REGION
+          value: eu-west-3
+        - name: SQS_QUEUE_URL
+          valueFrom:
+            secretKeyRef:
+              name: demo-app-secrets
+              key: sqs_queue_url
+        - name: PGHOST
+          value: postgres
+        - name: PGDATABASE
+          value: app
+        - name: PGUSER
+          value: app
+        - name: PGPASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: demo-app-secrets
+              key: pg_password
+        - name: WORKER_MODE
+          value: idempotent
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 300m
+            memory: 512Mi
+      volumes:
+      - name: migrations
+        configMap:
+          name: db-migrations

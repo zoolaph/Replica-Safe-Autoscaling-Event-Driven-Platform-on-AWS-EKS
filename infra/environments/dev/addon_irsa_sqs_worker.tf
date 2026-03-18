@@ -9,7 +9,7 @@ data "aws_iam_openid_connect_provider" "eks" {
 locals {
   oidc_issuer = replace(data.aws_iam_openid_connect_provider.eks.url, "https://", "")
 
-  sqs_worker_namespace       = "default"
+  sqs_worker_namespace       = "demo-app"
   sqs_worker_service_account = "sqs-worker"
   sqs_worker_subject         = "system:serviceaccount:${local.sqs_worker_namespace}:${local.sqs_worker_service_account}"
 }
