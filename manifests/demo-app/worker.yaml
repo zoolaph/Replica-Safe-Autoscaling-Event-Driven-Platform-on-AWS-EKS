@@ -12,6 +12,16 @@ data:
       payload JSONB NOT NULL,
       ts BIGINT NOT NULL
     );
+  002_add_processed_events.sql: |
+    CREATE TABLE IF NOT EXISTS processed_events (
+      id         BIGSERIAL PRIMARY KEY,
+      event_id   TEXT      NOT NULL,
+      type       TEXT      NOT NULL,
+      payload    JSONB     NOT NULL,
+      ts         BIGINT    NOT NULL,
+      pod_name   TEXT      NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -32,7 +42,12 @@ spec:
       initContainers:
       - name: migrate
         image: postgres:16
-        command: ["psql", "-h", "postgres", "-U", "app", "-d", "app", "-f", "/migrations/001_create_events.sql"]
+        command:
+        - sh
+        - -c
+        - |
+          psql -h postgres -U app -d app -f /migrations/001_create_events.sql
+          psql -h postgres -U app -d app -f /migrations/002_add_processed_events.sql
         env:
         - name: PGPASSWORD
           valueFrom:
@@ -66,6 +81,10 @@ spec:
               key: pg_password
         - name: WORKER_MODE
           value: idempotent
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
         resources:
           requests:
             cpu: 50m
