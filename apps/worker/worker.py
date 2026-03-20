@@ -1,6 +1,7 @@
 import os, json, time
 import boto3
 import psycopg
+from prometheus_client import Counter, start_http_server
 
 AWS_REGION = os.getenv("AWS_REGION", "eu-west-3")
 SQS_QUEUE_URL = os.getenv("SQS_QUEUE_URL", "")
@@ -25,6 +26,18 @@ BATCH_SIZE = int(os.getenv("BATCH_SIZE", "10"))
 #                   short visibility timeout → duplicate rows guaranteed at scale
 WORKER_MODE = os.getenv("WORKER_MODE", "idempotent")
 POD_NAME = os.getenv("POD_NAME", "unknown")
+METRICS_PORT = int(os.getenv("METRICS_PORT", "8000"))
+
+processed_total = Counter(
+    "worker_events_processed_total",
+    "Events successfully written to DB",
+    ["mode", "pod"],
+)
+deduped_total = Counter(
+    "worker_events_deduped_total",
+    "Events skipped as duplicates (idempotent mode only)",
+    ["pod"],
+)
 
 if not SQS_QUEUE_URL:
     raise SystemExit("SQS_QUEUE_URL not set")
@@ -42,6 +55,8 @@ def db_conn():
 
 def main():
     print(f"[worker] starting mode={WORKER_MODE} pod={POD_NAME}", flush=True)
+    start_http_server(METRICS_PORT)
+    print(f"[worker] metrics exposed on :{METRICS_PORT}/metrics", flush=True)
 
     conn = db_conn()
 
@@ -77,8 +92,10 @@ def main():
                         )
                         conn.commit()
                         if cur.rowcount == 0:
+                            deduped_total.labels(pod=POD_NAME).inc()
                             print(f"[worker] deduped event_id={event_id}", flush=True)
                         else:
+                            processed_total.labels(mode=WORKER_MODE, pod=POD_NAME).inc()
                             print(f"[worker] processed event_id={event_id} type={etype}", flush=True)
                         sqs.delete_message(QueueUrl=SQS_QUEUE_URL, ReceiptHandle=receipt)
 
@@ -94,6 +111,7 @@ def main():
                             (event_id, etype, json.dumps(payload), ts, POD_NAME),
                         )
                         conn.commit()
+                        processed_total.labels(mode=WORKER_MODE, pod=POD_NAME).inc()
                         print(
                             f"[worker] BROKEN processed event_id={event_id} type={etype} pod={POD_NAME}",
                             flush=True,

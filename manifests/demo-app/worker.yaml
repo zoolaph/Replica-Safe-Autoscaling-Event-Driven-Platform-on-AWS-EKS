@@ -37,6 +37,10 @@ spec:
     metadata:
       labels:
         app: worker
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
     spec:
       serviceAccountName: sqs-worker   # IRSA SA: sqs:ReceiveMessage + sqs:DeleteMessage
       initContainers:
@@ -85,6 +89,10 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.name
+        ports:
+        - name: metrics
+          containerPort: 8000
+          protocol: TCP
         resources:
           requests:
             cpu: 50m
@@ -96,3 +104,20 @@ spec:
       - name: migrations
         configMap:
           name: db-migrations
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: worker-metrics
+  namespace: demo-app
+  labels:
+    app: worker
+spec:
+  selector:
+    app: worker
+  ports:
+  - name: metrics
+    port: 8000
+    targetPort: metrics
+    protocol: TCP
+  clusterIP: None  # headless — Prometheus scrapes each pod individually
