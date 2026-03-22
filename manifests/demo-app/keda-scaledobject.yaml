@@ -32,6 +32,7 @@ spec:
       name: keda-aws-sqs
     metadata:
       queueURL: "REPLACE_ME_WITH_SQS_QUEUE_URL"
-      queueLength: "5"
+      queueLength: "5"          # target: 5 messages per replica → 10 msgs = 2 replicas
+      activationThreshold: "5"  # stay at 0 replicas until queue depth > 5
       awsRegion: eu-west-3
-      identityOwner: pod   # use the worker pod's sqs-worker IRSA role
+      identityOwner: pod        # use the worker pod's sqs-worker IRSA role
