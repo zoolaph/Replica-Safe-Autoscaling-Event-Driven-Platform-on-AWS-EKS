@@ -29,3 +29,6 @@
 .env.*
 
 **/tfplan
+
+# Claude Code local config
+.claude/
