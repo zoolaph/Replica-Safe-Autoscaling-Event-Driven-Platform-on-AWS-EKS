@@ -1,0 +1,75 @@
+# AlertmanagerConfig — namespace-scoped routing for demo-app alerts.
+# Prometheus Operator merges this into the global Alertmanager config automatically.
+#
+# Replace SLACK_WEBHOOK_URL with your actual webhook before deploying:
+#   kubectl -n demo-app create secret generic alertmanager-slack \
+#     --from-literal=url=https://hooks.slack.com/services/XXX/YYY/ZZZ
+#
+# Then update webhookConfigs[].httpConfig.bearerTokenSecret below.
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: demo-app
+  namespace: demo-app
+  labels:
+    alertmanagerConfig: demo-app
+spec:
+  route:
+    # Group alerts by alert name and namespace so related firings arrive together.
+    groupBy: ["alertname", "namespace"]
+    groupWait: 30s       # wait 30 s before sending the first notification in a group
+    groupInterval: 5m    # how long to wait before sending an updated notification
+    repeatInterval: 12h  # resend if still firing after 12 h
+    receiver: slack-warning
+
+    routes:
+      # Critical alerts: short groupWait, repeat every hour
+      - matchers:
+          - name: severity
+            value: critical
+        receiver: slack-critical
+        groupWait: 10s
+        repeatInterval: 1h
+
+      # Warning alerts: standard 30 s groupWait, repeat every 4 h
+      - matchers:
+          - name: severity
+            value: warning
+        receiver: slack-warning
+        groupWait: 30s
+        repeatInterval: 4h
+
+  receivers:
+    - name: slack-critical
+      slackConfigs:
+        - apiURL:
+            # Store the webhook URL in a k8s Secret, not inline.
+            name: alertmanager-slack
+            key: url
+          channel: "#alerts-critical"
+          sendResolved: true
+          title: |-
+            [{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .CommonLabels.alertname }}
+          text: |-
+            {{ range .Alerts }}
+            *Alert:* {{ .Annotations.summary }}
+            *Severity:* {{ .Labels.severity }}
+            *Description:* {{ .Annotations.description }}
+            *Runbook:* {{ .Annotations.runbook_url }}
+            {{ end }}
+
+    - name: slack-warning
+      slackConfigs:
+        - apiURL:
+            name: alertmanager-slack
+            key: url
+          channel: "#alerts-warning"
+          sendResolved: true
+          title: |-
+            [{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .CommonLabels.alertname }}
+          text: |-
+            {{ range .Alerts }}
+            *Alert:* {{ .Annotations.summary }}
+            *Severity:* {{ .Labels.severity }}
+            *Runbook:* {{ .Annotations.runbook_url }}
+            {{ end }}
