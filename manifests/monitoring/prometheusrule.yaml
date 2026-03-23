@@ -1,0 +1,138 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: demo-app
+  namespace: demo-app
+  labels:
+    # kube-prometheus-stack picks up rules with these labels by default
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+
+  # ── API alerts ────────────────────────────────────────────────────────────
+  - name: demo-app.api
+    rules:
+
+    - alert: APIHighErrorRate
+      # Fires when > 5% of API requests return 5xx for 2 consecutive minutes.
+      # Mapped to SLO 1 (99.9% availability). Warning gives time to investigate
+      # before the error budget burns too fast.
+      expr: |
+        sum(rate(http_request_duration_seconds_count{namespace="demo-app",status_code=~"5.."}[5m]))
+        /
+        sum(rate(http_request_duration_seconds_count{namespace="demo-app"}[5m]))
+        > 0.05
+      for: 2m
+      labels:
+        severity: warning
+        namespace: demo-app
+      annotations:
+        summary: "API 5xx rate above 5%"
+        description: >
+          {{ $value | humanizePercentage }} of API requests are returning 5xx.
+          Check SQS connectivity and pod logs.
+        runbook_url: "https://github.com/zoolaph/Replica-Safe-Autoscaling-Event-Driven-Platform-on-AWS-EKS/blob/main/docs/runbooks/api-5xx.md"
+
+    - alert: APIHighErrorRateCritical
+      # Page immediately when 10%+ of requests are failing — SLO breach imminent.
+      expr: |
+        sum(rate(http_request_duration_seconds_count{namespace="demo-app",status_code=~"5.."}[5m]))
+        /
+        sum(rate(http_request_duration_seconds_count{namespace="demo-app"}[5m]))
+        > 0.10
+      for: 1m
+      labels:
+        severity: critical
+        namespace: demo-app
+      annotations:
+        summary: "API 5xx rate above 10% — SLO breach imminent"
+        description: >
+          {{ $value | humanizePercentage }} of API requests are returning 5xx.
+        runbook_url: "https://github.com/zoolaph/Replica-Safe-Autoscaling-Event-Driven-Platform-on-AWS-EKS/blob/main/docs/runbooks/api-5xx.md"
+
+    - alert: APIHighLatency
+      # p95 > 500 ms sustained for 5 minutes. Maps to SLO 2.
+      expr: |
+        histogram_quantile(0.95,
+          sum(rate(http_request_duration_seconds_bucket{namespace="demo-app"}[5m])) by (le)
+        ) > 0.5
+      for: 5m
+      labels:
+        severity: warning
+        namespace: demo-app
+      annotations:
+        summary: "API p95 latency above 500 ms"
+        description: "p95 latency is {{ $value | humanizeDuration }}."
+        runbook_url: "https://github.com/zoolaph/Replica-Safe-Autoscaling-Event-Driven-Platform-on-AWS-EKS/blob/main/docs/runbooks/api-latency.md"
+
+  # ── Worker alerts ─────────────────────────────────────────────────────────
+  - name: demo-app.worker
+    rules:
+
+    - alert: WorkerNotConsuming
+      # Worker replicas are running but the processed counter has not moved in 5 m.
+      # This catches a hung/deadlocked worker that has not crashed (so PodCrashLooping
+      # would not fire).
+      expr: |
+        sum(rate(worker_events_processed_total{namespace="demo-app"}[5m])) == 0
+      for: 5m
+      labels:
+        severity: warning
+        namespace: demo-app
+      annotations:
+        summary: "Worker processed 0 events in the last 5 minutes"
+        description: "Worker pods are running but not writing to the DB. Check logs and SQS connectivity."
+        runbook_url: "https://github.com/zoolaph/Replica-Safe-Autoscaling-Event-Driven-Platform-on-AWS-EKS/blob/main/docs/runbooks/worker-lag.md"
+
+    - alert: WorkerSQSBacklogCritical
+      # KEDA exposes keda_scaler_metrics_value with the raw queue depth it reads
+      # from SQS. > 50 for 5 m means autoscaling is not keeping up.
+      expr: |
+        keda_scaler_metrics_value{scaledObject="worker", namespace="demo-app"} > 50
+      for: 5m
+      labels:
+        severity: critical
+        namespace: demo-app
+      annotations:
+        summary: "SQS backlog above 50 messages for 5+ minutes"
+        description: "Queue depth is {{ $value }}. Worker may be stuck or maxReplicaCount reached."
+        runbook_url: "https://github.com/zoolaph/Replica-Safe-Autoscaling-Event-Driven-Platform-on-AWS-EKS/blob/main/docs/runbooks/worker-lag.md"
+
+  # ── Infrastructure alerts ─────────────────────────────────────────────────
+  - name: demo-app.infra
+    rules:
+
+    - alert: PodCrashLooping
+      # Any container in demo-app in CrashLoopBackOff for 5 continuous minutes.
+      expr: |
+        kube_pod_container_status_waiting_reason{
+          reason="CrashLoopBackOff",
+          namespace="demo-app"
+        } > 0
+      for: 5m
+      labels:
+        severity: critical
+        namespace: demo-app
+      annotations:
+        summary: "Pod {{ $labels.pod }} / {{ $labels.container }} is crash-looping"
+        description: "CrashLoopBackOff detected. Check recent deployments and secret mounts."
+        runbook_url: "https://github.com/zoolaph/Replica-Safe-Autoscaling-Event-Driven-Platform-on-AWS-EKS/blob/main/docs/runbooks/crashlooping.md"
+
+    - alert: PostgresDown
+      # The postgres container has been not-ready for 2+ minutes.
+      # kube-state-metrics (enabled in observability/values.yaml) provides this metric.
+      expr: |
+        kube_pod_container_status_ready{
+          pod=~"postgres.*",
+          namespace="demo-app",
+          container="postgres"
+        } == 0
+      for: 2m
+      labels:
+        severity: critical
+        namespace: demo-app
+      annotations:
+        summary: "Postgres pod is not ready"
+        description: "The postgres container has been not-ready for 2+ minutes. All workers and API will fail."
+        runbook_url: "https://github.com/zoolaph/Replica-Safe-Autoscaling-Event-Driven-Platform-on-AWS-EKS/blob/main/docs/runbooks/postgres-down.md"

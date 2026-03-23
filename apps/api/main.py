@@ -3,6 +3,7 @@ import boto3
 from botocore.exceptions import ClientError
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+from prometheus_fastapi_instrumentator import Instrumentator
 
 AWS_REGION = os.getenv("AWS_REGION", "eu-west-3")
 SQS_QUEUE_URL = os.getenv("SQS_QUEUE_URL", "")
@@ -12,6 +13,7 @@ if not SQS_QUEUE_URL:
 
 sqs = boto3.client("sqs", region_name=AWS_REGION)
 app = FastAPI(title="rsedp-demo-api")
+Instrumentator().instrument(app).expose(app)  # exposes /metrics
 
 class EventIn(BaseModel):
     type: str = "order.created"

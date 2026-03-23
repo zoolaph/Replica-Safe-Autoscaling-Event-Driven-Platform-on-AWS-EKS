@@ -12,6 +12,10 @@ spec:
     metadata:
       labels:
         app: api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
     spec:
       serviceAccountName: demo-api   # IRSA SA: sqs:SendMessage only (see addon_irsa_sqs_api.tf)
       containers:
