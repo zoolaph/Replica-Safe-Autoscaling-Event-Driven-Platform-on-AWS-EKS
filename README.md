@@ -1,320 +1,328 @@
 # Replica-Safe, Autoscaling Event-Driven Platform on AWS EKS
 
-**Subtitle:** Turn “Kubernetes deployed but not scalable” into a production-minded platform: safe horizontal scaling for Kafka consumers, HA across AZs, lag-based autoscaling (KEDA), network isolation, observability, and backup/restore with defined RPO/RTO.
+**A reproducible reference implementation that proves Kubernetes event-driven workloads can scale safely.**
 
-## Why this exists (problem statement)
-
-A lot of “Kubernetes migrations” end up running **1 replica** for stateful/event-driven workloads because scaling breaks correctness:
-- duplicate Kafka processing
-- singleton jobs running twice
-- state stored in memory
-- unsafe shutdowns and rebalances
-- noisy alerts and no recovery plan
-
-This project is a **reproducible reference implementation** that:
-1) Demonstrates the failure (“before”: scaling causes duplicates / inconsistency)  
-2) Fixes it properly (“after”: replica-safe patterns)  
-3) Proves it under load (traffic + lag)  
-4) Operates it like production (SLOs, alerts, runbooks, backup/restore drills, network policies)
+Most "Kubernetes migrations" run **1 replica** for event consumers because scaling breaks correctness:
+duplicate processing, phantom rows, state collisions. This project demonstrates the failure, fixes it
+properly, and operates it like production — SLOs, alerts, runbooks, backup drills, and autoscaling
+evidence under real load.
 
 ---
 
-## High-level architecture
+## What this project proves
+
+| # | Claim | Evidence |
+|---|-------|----------|
+| 1 | Multi-AZ EKS cluster deployable from Terraform | `terraform apply` → cluster, VPC, IRSA, VPC endpoints |
+| 2 | Scaling a naive consumer causes duplicates | `demo-05-incident-001.sh` → duplicate rows in DB |
+| 3 | Idempotency + DB constraint eliminates duplicates | `demo-06-fix-idempotency.sh` → exactly N rows for N events |
+| 4 | HPA scales the API under CPU load | `demo-03-scale-api-hpa.sh` → 1 → 3-4 replicas under k6 load |
+| 5 | KEDA scales the worker based on queue depth | `demo-04-scale-worker-keda.sh` → 1 → 10 replicas as SQS fills |
+| 6 | SLOs, alerts, and runbooks are in place | `manifests/monitoring/` + `docs/sre/slo.md` + `docs/runbooks/` |
+| 7 | Design decisions are justified, not assumed | `docs/architecture/tradeoffs.md` |
+
+---
+
+## Architecture
 
 ```
+                       Internet
+                          │
+                    (AWS ALB Ingress)
+                          │
+              ┌───────────▼───────────┐
+              │   API (FastAPI)        │  HPA: CPU 70%, 1-10 replicas
+              │   POST /events         │  Prometheus metrics via /metrics
+              └───────────┬───────────┘
+                          │ SQS send_message
+                          ▼
+              ┌───────────────────────┐
+              │   Amazon SQS Queue    │  Fully managed, IRSA access
+              │   (eu-west-3)         │
+              └───────────┬───────────┘
+                          │ receive_message / delete_message
+              ┌───────────▼───────────┐
+              │   Worker (Python)      │  KEDA: queueLength=5, 0-10 replicas
+              │   ON CONFLICT DO NOTH  │  Prometheus counters: processed + deduped
+              └───────────┬───────────┘
+                          │ INSERT ... ON CONFLICT DO NOTHING
+              ┌───────────▼───────────┐
+              │   Postgres (in-cluster)│  PVC: gp3, Velero backup to S3
+              │   UNIQUE(event_id)     │
+              └───────────────────────┘
 
+Observability layer (all namespaces):
+  kube-prometheus-stack → Prometheus, Grafana, Alertmanager
+  PrometheusRule: 7 alerts (API 5xx, latency, worker lag, crashloop, postgres down)
+  AlertmanagerConfig: Slack routing (critical / warning channels)
+  Runbooks: docs/runbooks/*.md
+
+Platform layer (kube-system / dedicated namespaces):
+  AWS Load Balancer Controller  — ALB Ingress
+  KEDA                          — SQS-based worker autoscaling
+  Cluster Autoscaler            — Node autoscaling
+  Kyverno                       — Policy: no latest tag, no privileged, require resource limits
+  Velero                        — Namespace backup/restore to S3
+  cert-manager + external-dns   — TLS + Route53 DNS management
 ```
-                     ┌───────────────────────────────┐
-                     │            Internet           │
-                     └───────────────┬───────────────┘
-                                     │
-                               (AWS ALB Ingress)
-                                     │
-                           ┌─────────▼─────────┐
-                           │        API        │
-                           │  HTTP: create evt │
-                           └─────────┬─────────┘
-                                     │ produce
-                                     ▼
-                            ┌───────────────────┐
-                            │       Kafka       │
-                            │ topics + consumer │
-                            └─────────┬─────────┘
-                                      │ consume
-                                      ▼
-                           ┌────────────────────┐
-                           │       Worker       │
-                           │ Kafka consumer grp │
-                           │ replica-safe logic │
-                           └─────────┬──────────┘
-                                     │ write
-                                     ▼
-                              ┌─────────────┐
-                              │  Postgres   │
-                              │ dedup + data│
-                              └─────────────┘
+
+---
+
+## Prerequisites
+
+### Local tools (pinned in `mise.toml`)
+
+| Tool | Version |
+|------|---------|
+| terraform | 1.7.5 |
+| aws-cli | 2.15.57 |
+| kubectl | 1.29.7 |
+| helm | 3.14.4 |
+| k6 | latest |
+
+Install with [mise](https://mise.jdx.dev/): `mise install`
+
+### AWS
+
+- A dedicated AWS account (strongly recommended — this creates VPC, EKS, IAM roles, S3 buckets)
+- AWS SSO or long-lived credentials configured in `~/.aws/config` under profile `dev`
+- Budget alert configured on the account
+
+### Before you start
+
+```bash
+# Authenticate to AWS (SSO or configured profile)
+./bin/rsedp aws
+
+# Verify tools are available
+./bin/rsedp bootstrap
 ```
 
-Observability:
+---
 
-* Prometheus/Grafana/Alertmanager (kube-prometheus-stack)
-* Dashboards + alerts + runbooks
+## Quickstart (end-to-end, ~20 minutes)
 
-Autoscaling:
+### 1 — Bootstrap Terraform backend (once per account)
 
-* HPA for API (CPU-based)
-* KEDA for Worker (Kafka lag-based)
-* Cluster Autoscaler (nodes)
+```bash
+cd infra/bootstrap
+terraform init
+terraform apply
+# Creates S3 bucket + DynamoDB table for remote state
+```
 
-Security:
+### 2 — Provision AWS infrastructure
 
-* NetworkPolicies (default-deny + allowlist)
-* IRSA for AWS access (Velero S3, ALB controller, etc.)
+```bash
+./bin/rsedp env
+# Runs terraform init/plan/apply in infra/environments/dev/
+# Creates: VPC (3 AZs), EKS 1.29, node group (t3.medium x2),
+#          IRSA roles, SQS queue, VPC endpoints, S3 bucket for backups
+# Updates kubeconfig automatically.
 
-Backup/Restore:
+kubectl get nodes   # verify 2 nodes are Ready
+```
 
-* Velero (K8s resources + PVs if applicable) to S3
-* Postgres backups to S3 (pgBackRest or WAL-G) + restore drills
+### 3 — Install platform add-ons
 
-````
+```bash
+./bin/rsedp metrics       # metrics-server (required for HPA)
+./bin/rsedp alb           # AWS Load Balancer Controller
+./bin/rsedp autoscaler    # Cluster Autoscaler
+./bin/rsedp observability # kube-prometheus-stack (Prometheus, Grafana, Alertmanager)
+./bin/rsedp logging       # CloudWatch container insights
+./bin/rsedp cert-manager  # cert-manager
+./bin/rsedp external-dns  # external-dns (Route53)
+./bin/rsedp apply-policies # Kyverno policies
+
+# Verify everything is green
+./bin/rsedp check
+```
+
+### 4 — Build and push application images
+
+```bash
+ECR_REGISTRY="$(terraform -chdir=infra/environments/dev output -raw ecr_registry)"
+AWS_REGION=eu-west-3
+AWS_PROFILE=dev
+
+aws ecr get-login-password --region ${AWS_REGION} --profile ${AWS_PROFILE} \
+  | docker login --username AWS --password-stdin "${ECR_REGISTRY}"
+
+docker build -t "${ECR_REGISTRY}/api:dev"    apps/api/
+docker build -t "${ECR_REGISTRY}/worker:dev" apps/worker/
+
+docker push "${ECR_REGISTRY}/api:dev"
+docker push "${ECR_REGISTRY}/worker:dev"
+```
+
+### 5 — Deploy the demo-app stack
+
+```bash
+./scripts/demo-01-deploy.sh
+# Deploys: namespace, secrets, postgres, api, worker, hpa, keda-scaledobject
+# Waits for all rollouts to complete.
+# Prints pod status and API endpoint.
+
+kubectl -n demo-app get pods   # all Running
+```
+
+### 6 — Apply monitoring
+
+```bash
+kubectl apply -f manifests/monitoring/prometheusrule.yaml
+kubectl apply -f manifests/monitoring/alertmanager-config.yaml
+
+# Create the Slack webhook secret (replace with your real URL)
+kubectl -n demo-app create secret generic alertmanager-slack \
+  --from-literal=url=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+```
+
+### 7 — Smoke test
+
+```bash
+./scripts/demo-02-smoke.sh 20
+# Sends 20 events, waits for worker to drain, asserts 20 rows in DB.
+# Expected: [PASS] Row count matches — no duplicates, no lost events
+```
+
+---
+
+## Demos
+
+Run the demos in order. Each one builds on the previous.
+
+### Demo 1 — Deploy (covered in Quickstart step 5)
+
+```bash
+./scripts/demo-01-deploy.sh
+```
+
+### Demo 2 — Smoke test
+
+```bash
+./scripts/demo-02-smoke.sh [count]
+```
+
+Asserts: events sent = DB rows. Proves end-to-end path is healthy.
+
+### Demo 3 — HPA: API scales under traffic
+
+```bash
+./scripts/demo-03-scale-api-hpa.sh
+```
+
+Runs a 5-minute k6 load test (50 VUs). Watch HPA scale the API from 1 → 3-4 replicas.
+Expected: k6 p95 < 2 s, error rate < 5%.
+
+Full walkthrough: [docs/demo/hpa-api.md](docs/demo/hpa-api.md)
+
+### Demo 4 — KEDA: Worker scales with queue depth
+
+```bash
+./scripts/demo-04-scale-worker-keda.sh [message-count]
+```
+
+Pumps 100 messages into SQS. Watch KEDA scale the worker from 1 → 10 replicas as the
+queue fills, then back to 0 after it drains.
+
+Full walkthrough: [docs/demo/keda-worker.md](docs/demo/keda-worker.md)
+
+### Demo 5 — INCIDENT-001: Duplicate processing (the "before" state)
+
+```bash
+./scripts/demo-05-incident-001.sh [event-count]
+```
+
+Switches worker to `non-idempotent` mode, scales to 5 replicas, sends 50 events.
+Result: 200+ rows in `processed_events` for 50 unique events — **data corruption**.
+
+Postmortem: [docs/incidents/INCIDENT-001.md](docs/incidents/INCIDENT-001.md)
+
+### Demo 6 — Fix: Idempotency eliminates duplicates (the "after" state)
+
+```bash
+./scripts/demo-06-fix-idempotency.sh [event-count]
+```
+
+Switches worker to `idempotent` mode, sends each event_id twice (simulating SQS re-delivery),
+keeps 5 replicas. Result: exactly N rows in `events` table — **correct under any replica count**.
+
+---
+
+## SLOs and Alerts
+
+Four SLOs are defined in [docs/sre/slo.md](docs/sre/slo.md):
+
+| SLO | Target | Alert |
+|-----|--------|-------|
+| API Availability | 99.9% non-5xx / 30 days | `APIHighErrorRate` (warn), `APIHighErrorRateCritical` |
+| API Latency | p95 < 500 ms | `APIHighLatency` (warn) |
+| Worker Processing Lag | SQS depth < 50 for 5 min | `WorkerSQSBacklogCritical` |
+| Postgres Availability | 99.9% pod ready | `PostgresDown` (critical) |
+
+Runbooks: [docs/runbooks/](docs/runbooks/)
+
+---
+
+## Tradeoffs
+
+Key design decisions are justified (not assumed) in [docs/architecture/tradeoffs.md](docs/architecture/tradeoffs.md):
+
+- Karpenter vs Cluster Autoscaler
+- SQS vs Kafka
+- DB-level dedup vs application-level Redis SET NX
+- IRSA vs node IAM roles
+- VPC Endpoints vs NAT Gateway
+- In-cluster Postgres vs RDS Multi-AZ
+- Kyverno vs OPA/Gatekeeper
 
 ---
 
 ## Repo structure
 
-- `infra/`  
-  Terraform for AWS: VPC (multi-AZ), EKS, node groups, IRSA/OIDC, S3 buckets for backups, etc.
-
-- `platform/`  
-  Cluster add-ons (Helm/Manifests): AWS Load Balancer Controller, metrics-server, kube-prometheus-stack, KEDA, network policy engine (Cilium/Calico), Velero.
-
-- `apps/`  
-  Demo application stack (manifests or Helm): `api`, `worker`, `kafka`, `postgres`, `k6` jobs.
-
-- `tests/`  
-  Load & correctness tests: k6 scripts, integration checks, idempotency verification.
-
-- `docs/`  
-  Architecture, tradeoffs, demos, runbooks, postmortems, backup RPO/RTO.
-
----
-
-## Quality bar (what “finished” means)
-
-This project is “done” when the README steps can reproduce all of the following:
-
-1. `terraform apply` → multi-AZ EKS platform exists
-2. Platform components installed (ALB controller, metrics-server, monitoring)
-3. App stack deployed and reachable via Ingress
-4. **Before mode:** scaling `worker` to 2+ replicas causes duplicates (documented incident)
-5. **After mode:** idempotency makes scaling safe (proof + tests)
-6. Load test → `api` scales with HPA
-7. Lag test → `worker` scales with KEDA based on Kafka lag
-8. Alerts fire correctly + runbooks exist
-9. NetworkPolicies enforce default-deny and only allow required traffic
-10. Backup & restore drill succeeds:
-   - Velero restores namespace/resources (and PVs if used)
-   - Postgres restore from S3 succeeds
-11. `docs/tradeoffs.md` explains key design choices and costs
-
----
-
-## Requirements
-
-### Local tools
-- `terraform` (pinned)
-- `awscli` (pinned)
-- `kubectl` (pinned)
-- `helm` (pinned)
-
-See: `tools/versions.md` (or `.tool-versions` / `mise.toml`)
-
-### AWS
-- Dedicated AWS account strongly recommended
-- Do NOT use root credentials for daily work
-- Budget alerts enabled
-
----
-
-## Quickstart (end-to-end)
-
-> NOTE: These commands are the target interface. Replace paths/names based on your repo conventions.
-
-### 1) Provision AWS infra (Terraform)
-```bash
-cd infra
-terraform init
-terraform plan
-terraform apply
-````
-
-Expected outputs:
-
-* EKS cluster name/endpoint
-* kubeconfig command or `aws eks update-kubeconfig ...`
-
-### 2) Configure kubectl
-
-```bash
-aws eks update-kubeconfig --region <REGION> --name <CLUSTER_NAME>
-kubectl get nodes
 ```
-
-### 3) Install platform add-ons
-
-```bash
-# Example (actual install scripts live in platform/)
-cd platform
-
-# ALB Controller (IRSA), metrics-server, kube-prometheus-stack
-./install_platform.sh
+.
+├── apps/
+│   ├── api/            FastAPI HTTP server — publishes to SQS
+│   ├── worker/         SQS consumer — idempotent/non-idempotent modes
+│   └── db/migrations/  Postgres schema (events + processed_events tables)
+├── infra/
+│   ├── bootstrap/      Terraform state backend (S3 + DynamoDB)
+│   └── environments/
+│       └── dev/        EKS cluster, VPC, IRSA, SQS queue, S3 backup bucket
+├── platform/addons/    Helm values for: ALB controller, observability, KEDA, Velero, Kyverno...
+├── manifests/
+│   ├── demo-app/       K8s manifests: namespace, api, worker, postgres, hpa, keda-scaledobject
+│   └── monitoring/     PrometheusRule (7 alerts), AlertmanagerConfig (Slack routing)
+├── scripts/
+│   ├── demo-01-deploy.sh          Deploy demo-app stack
+│   ├── demo-02-smoke.sh           Send N events, assert N DB rows
+│   ├── demo-03-scale-api-hpa.sh   k6 load test → HPA scale-out
+│   ├── demo-04-scale-worker-keda.sh  Pump SQS → KEDA scale-out
+│   ├── demo-05-incident-001.sh    Reproduce duplicate processing
+│   ├── demo-06-fix-idempotency.sh Prove idempotency fix
+│   └── ...                        Platform install helpers (rsedp targets)
+├── tests/load/
+│   ├── k6-api.js       5-min HPA load test (50 VUs)
+│   └── k6-burst.js     Burst load test
+├── docs/
+│   ├── architecture/
+│   │   └── tradeoffs.md           Design decisions with explicit alternatives
+│   ├── incidents/
+│   │   └── INCIDENT-001.md        Duplicate processing postmortem
+│   ├── runbooks/                  Operational runbooks for every alert
+│   ├── sre/slo.md                 SLO definitions with PromQL + error budgets
+│   └── demo/                      HPA and KEDA demo walkthroughs
+├── bin/rsedp           Command dispatcher
+└── mise.toml           Tool version pinning
 ```
-
-Verify:
-
-```bash
-kubectl get pods -A
-kubectl get ingress -A
-```
-
-### 4) Deploy the app stack
-
-```bash
-cd apps
-./deploy_apps.sh
-```
-
-Verify:
-
-```bash
-kubectl get pods -n apps
-kubectl get svc -n apps
-kubectl get ingress -n apps
-```
-
----
-
-## Demos (proof the system works)
-
-Each demo has step-by-step instructions and expected evidence under `docs/demos/`.
-
-### Demo 1 — BEFORE mode: scaling breaks correctness (duplicate processing)
-
-Goal: show why naive scaling is unsafe.
-
-Steps:
-
-* Deploy worker in “before” mode (non-idempotent path)
-* Run load/produce events
-* Scale worker 1 → 2 → 5 replicas
-* Capture evidence of duplicates / inconsistent DB state
-
-Artifacts:
-
-* `docs/postmortems/INCIDENT-001-duplicate-processing.md`
-
-### Demo 2 — AFTER mode: replica-safe processing
-
-Goal: scaling is safe under retries and concurrency.
-
-Implementation expectation (MVP):
-
-* Idempotency key per event
-* Dedup table in Postgres (`UNIQUE(event_id)`)
-* Safe retries + backoff
-* Graceful shutdown (drain in-flight, then exit)
-
-Evidence:
-
-* Same test as Demo 1 produces correct final state at 5+ replicas
-* `tests/` include an automated correctness check
-
-### Demo 3 — HPA traffic scaling (API)
-
-Goal: traffic spike → API scales and remains stable.
-
-Evidence:
-
-* HPA events
-* p95 latency + 5xx dashboards show stable service
-
-### Demo 4 — KEDA lag-based autoscaling (Worker)
-
-Goal: backlog (Kafka lag) is the scaling signal.
-
-Evidence:
-
-* Lag increases
-* KEDA scales worker
-* Lag returns to normal
-* Cooldown behaves sanely (no thrash)
-
-### Demo 5 — Network isolation (default-deny + allowlist)
-
-Goal: prove policies are enforced, not just present.
-
-Evidence:
-
-* Default-deny breaks the app
-* Allow rules restore only required flows
-* `docs/security/traffic-matrix.md` documents “who talks to whom and why”
-
-### Demo 6 — Backup & restore drill (RPO/RTO)
-
-Goal: survivability, not vibes.
-
-Velero:
-
-* Scheduled backup to S3
-* Restore drill: delete namespace → restore → service returns
-
-Postgres:
-
-* Backups to S3 (pgBackRest/WAL-G)
-* Restore drill: drop/corrupt table → restore → verify data
-
-Evidence:
-
-* `docs/backup/rpo-rto.md` with realistic targets and assumptions
-
-### Demo 7 — Observability, SLOs, alerts, runbooks
-
-Goal: operate like production.
-
-Minimum:
-
-* SLIs: API p95 latency, 5xx rate; Worker lag, processing errors
-* Alerts + runbooks:
-
-  * `docs/runbooks/ALERT-High5xx.md`
-  * `docs/runbooks/ALERT-HighLatencyP95.md`
-  * `docs/runbooks/ALERT-KafkaLag.md`
-
----
-
-## CI expectations (non-negotiable)
-
-* Terraform: `fmt`, `validate`, `plan` on merge requests
-* Kubernetes manifests/Helm: lint (as applicable)
-* Tests: at least one automated correctness test and one load test entrypoint
-* Every milestone updates docs + includes a demo procedure
-
----
-
-## Tradeoffs * justify decisions *
-
-See `docs/tradeoffs.md`:
-
-* Kafka in-cluster vs managed MSK
-* ALB vs NGINX ingress
-* Cluster Autoscaler vs Karpenter
-* NetworkPolicy engine choice (Cilium vs Calico)
-* Backup tooling and cost implications
 
 ---
 
 ## Contributing / Working agreements
 
-* Small commits, readable history
-* Every feature includes: tests + observability + docs + demo steps
-* Any operational feature must include: failure modes + rollback plan + verification steps
+- Every feature includes: tests + observability + docs + demo steps
+- Every operational change includes: failure modes + rollback plan + verification
+- Small commits, readable history
+- CI checks: `terraform fmt/validate/plan`, manifest lint, smoke test on merge
