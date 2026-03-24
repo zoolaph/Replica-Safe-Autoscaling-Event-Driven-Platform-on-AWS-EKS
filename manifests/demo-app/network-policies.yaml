@@ -1,0 +1,169 @@
+# network-policies.yaml — Default-deny + per-workload allow rules for demo-app namespace.
+#
+# Traffic model:
+#
+#   [ALB / port-forward]
+#          │ :8080
+#          ▼
+#       api pod ──── HTTPS :443 ───► SQS (VPC endpoint)
+#
+#   [Prometheus / monitoring ns]
+#          │ :8080  :8000
+#          ▼         ▼
+#       api pod    worker pod ──── :5432 ──► postgres pod
+#                       └───────── HTTPS :443 ──► SQS (VPC endpoint)
+#
+# All other traffic (east-west, internet) is blocked by the default-deny policy below.
+# ---
+
+# ── 1. Default deny ────────────────────────────────────────────────────────────
+# Matches every pod in the namespace (empty podSelector = all pods).
+# Declaring both policyTypes with no rules = deny everything.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: demo-app
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+
+---
+# ── 2. API — allow ingress on :8080 from any source ───────────────────────────
+# Covers:
+#   • AWS ALB (IP-mode targets, source = VPC CIDR)
+#   • kubectl port-forward (source = node loopback, routed via API server)
+#   • Prometheus scrape of /metrics from monitoring namespace
+# No `from` field = allow all sources (in-cluster and external).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-ingress
+  namespace: demo-app
+spec:
+  podSelector:
+    matchLabels:
+      app: api
+  policyTypes:
+  - Ingress
+  ingress:
+  - ports:
+    - port: 8080
+      protocol: TCP
+
+---
+# ── 3. API — allow egress to DNS and SQS ──────────────────────────────────────
+# DNS (UDP/TCP 53): kube-dns lookup for "sqs.eu-west-3.amazonaws.com"
+# HTTPS (TCP 443): SQS SendMessage via VPC interface endpoint (private IP in VPC)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-egress
+  namespace: demo-app
+spec:
+  podSelector:
+    matchLabels:
+      app: api
+  policyTypes:
+  - Egress
+  egress:
+  # kube-dns
+  - ports:
+    - port: 53
+      protocol: UDP
+    - port: 53
+      protocol: TCP
+  # SQS via VPC endpoint (HTTPS)
+  - ports:
+    - port: 443
+      protocol: TCP
+
+---
+# ── 4. Worker — allow Prometheus to scrape metrics on :8000 ───────────────────
+# Prometheus runs in the `monitoring` namespace (kube-prometheus-stack default).
+# All namespaces in Kubernetes ≥ 1.21 carry the auto-label
+#   kubernetes.io/metadata.name: <namespace-name>
+# so no manual labelling of the monitoring namespace is required.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-worker-metrics-ingress
+  namespace: demo-app
+spec:
+  podSelector:
+    matchLabels:
+      app: worker
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring
+    ports:
+    - port: 8000
+      protocol: TCP
+
+---
+# ── 5. Worker — allow egress to DNS, Postgres, and SQS ────────────────────────
+# DNS (53):    kube-dns lookup for "postgres" service and SQS endpoint
+# Postgres (5432): in-cluster StatefulSet — restricted to pods labelled app=postgres
+# HTTPS (443): SQS ReceiveMessage / DeleteMessage via VPC endpoint
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-worker-egress
+  namespace: demo-app
+spec:
+  podSelector:
+    matchLabels:
+      app: worker
+  policyTypes:
+  - Egress
+  egress:
+  # kube-dns
+  - ports:
+    - port: 53
+      protocol: UDP
+    - port: 53
+      protocol: TCP
+  # Postgres (restricted to the postgres pod only)
+  - to:
+    - podSelector:
+        matchLabels:
+          app: postgres
+    ports:
+    - port: 5432
+      protocol: TCP
+  # SQS via VPC endpoint (HTTPS)
+  - ports:
+    - port: 443
+      protocol: TCP
+
+---
+# ── 6. Postgres — allow ingress from worker only ──────────────────────────────
+# Covers both:
+#   • The main worker container (DB reads/writes)
+#   • The initContainer (psql migration runs on first pod start)
+# Both share the same pod label `app: worker`, so a single rule covers both.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-postgres-from-worker
+  namespace: demo-app
+spec:
+  podSelector:
+    matchLabels:
+      app: postgres
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: worker
+    ports:
+    - port: 5432
+      protocol: TCP
