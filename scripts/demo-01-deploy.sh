@@ -73,6 +73,11 @@ kubectl -n demo-app patch secret demo-app-secrets \
   --type=merge \
   -p "{\"data\":{\"sqs_queue_url\":\"${SQS_B64}\"}}"
 
+# Apply NetworkPolicies (default-deny + per-workload allow rules)
+# Must come before workload pods so the policies are in place from first-start.
+banner "Applying NetworkPolicies"
+kubectl apply -f "${MANIFESTS_DIR}/network-policies.yaml"
+
 # Apply infra: postgres
 banner "Applying Postgres"
 kubectl apply -f "${MANIFESTS_DIR}/postgres.yaml"
