@@ -13,10 +13,10 @@ Usage:
 Commands:
   aws               Login to AWS (SSO)
   bootstrap         Bootstrap required tooling / prereqs
+  up                Full platform bring-up: infra → add-ons → app → check
   env               Environment lifecycle helper (deploy/status/etc.)
   check             Quick sanity checks (cluster/infra readiness)
   destroy           Destroy demo resources + terraform environment
-  all               Full dev install (no demos)
 
   # Platform / demos
   metrics           Metrics stack helper
@@ -56,6 +56,7 @@ case "${cmd}" in
     ;;
   aws)              exec "${ROOT_DIR}/scripts/aws.sh" "$@" ;;
   bootstrap)        exec "${ROOT_DIR}/scripts/bootstrap.sh" "$@" ;;
+  up)               exec "${ROOT_DIR}/scripts/up.sh" "$@" ;;
   env)              exec "${ROOT_DIR}/scripts/env.sh" "$@" ;;
   audit)            exec "${ROOT_DIR}/scripts/audit.sh" "$@" ;;
   metrics)          exec "${ROOT_DIR}/scripts/metrics.sh" "$@" ;;
