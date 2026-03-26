@@ -111,35 +111,14 @@ terraform apply
 # Creates S3 bucket + DynamoDB table for remote state
 ```
 
-### 2 — Provision AWS infrastructure
+### 2 — Authenticate and verify tools
 
 ```bash
-./bin/rsedp env
-# Runs terraform init/plan/apply in infra/environments/dev/
-# Creates: VPC (3 AZs), EKS 1.29, node group (t3.medium x2),
-#          IRSA roles, SQS queue, VPC endpoints, S3 bucket for backups
-# Updates kubeconfig automatically.
-
-kubectl get nodes   # verify 2 nodes are Ready
+./bin/rsedp aws        # authenticate to AWS (SSO or configured profile)
+./bin/rsedp bootstrap  # verify all required tools are installed
 ```
 
-### 3 — Install platform add-ons
-
-```bash
-./bin/rsedp metrics       # metrics-server (required for HPA)
-./bin/rsedp alb           # AWS Load Balancer Controller
-./bin/rsedp autoscaler    # Cluster Autoscaler
-./bin/rsedp observability # kube-prometheus-stack (Prometheus, Grafana, Alertmanager)
-./bin/rsedp logging       # CloudWatch container insights
-./bin/rsedp cert-manager  # cert-manager
-./bin/rsedp external-dns  # external-dns (Route53)
-./bin/rsedp apply-policies # Kyverno policies
-
-# Verify everything is green
-./bin/rsedp check
-```
-
-### 4 — Build and push application images
+### 3 — Build and push application images
 
 ```bash
 ECR_REGISTRY="$(terraform -chdir=infra/environments/dev output -raw ecr_registry)"
@@ -156,29 +135,43 @@ docker push "${ECR_REGISTRY}/api:dev"
 docker push "${ECR_REGISTRY}/worker:dev"
 ```
 
-### 5 — Deploy the demo-app stack
+### 4 — Bring up the full platform
 
 ```bash
-./scripts/demo-01-deploy.sh
-# Deploys: namespace, secrets, postgres, api, worker, hpa, keda-scaledobject
-# Waits for all rollouts to complete.
-# Prints pod status and API endpoint.
-
-kubectl -n demo-app get pods   # all Running
+./bin/rsedp up
 ```
 
-### 6 — Apply monitoring
+This single command runs the full sequence end-to-end:
+
+| Step | Command | What it does |
+|------|---------|-------------|
+| 1 | `env` | Terraform apply — VPC, EKS, IRSA, SQS, S3 |
+| 2 | `metrics` | metrics-server (required for HPA) |
+| 3 | `alb` | AWS Load Balancer Controller |
+| 4 | `autoscaler` | Cluster Autoscaler |
+| 5 | `observability` | kube-prometheus-stack (Prometheus, Grafana, Alertmanager) |
+| 6 | `logging` | CloudWatch container insights |
+| 7 | `cert-manager` | cert-manager |
+| 8 | `external-dns` | external-dns (Route53 sync) |
+| 9 | `kyverno` | Kyverno admission controller |
+| 10 | `apply-policies` | Kyverno cluster policies |
+| 11 | `demo-01-deploy.sh` | demo-app stack: postgres, api, worker, HPA, KEDA, NetworkPolicies |
+| 12 | monitoring manifests | PrometheusRule (7 alerts) + AlertmanagerConfig (Slack routing) |
+| 13 | `check` | Cluster health sanity check |
+
+**Flags:**
+- `--skip-infra` — skip step 1 (terraform) if the cluster already exists
+- `--skip-deploy` — skip steps 11-12 if images are not yet pushed
+
+### 5 — Create the Slack webhook secret
 
 ```bash
-kubectl apply -f manifests/monitoring/prometheusrule.yaml
-kubectl apply -f manifests/monitoring/alertmanager-config.yaml
-
-# Create the Slack webhook secret (replace with your real URL)
+# Replace with your real Slack webhook URL
 kubectl -n demo-app create secret generic alertmanager-slack \
   --from-literal=url=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
 ```
 
-### 7 — Smoke test
+### 6 — Smoke test
 
 ```bash
 ./scripts/demo-02-smoke.sh 20
