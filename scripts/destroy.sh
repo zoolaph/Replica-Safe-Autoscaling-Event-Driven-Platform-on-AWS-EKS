@@ -43,7 +43,7 @@ Safety:
   - Requires explicit approval: --yes OR DESTROY_APPROVE=dev
 
 What it destroys:
-  - demo namespaces: demo-ingress, demo-storage (best-effort)
+  - demo namespaces: demo-app, demo-ingress, demo-storage (best-effort)
   - demo workloads: cpu-hog, sqs-worker objects (best-effort)
   - terraform environment: ${ENV_DIR_DEFAULT}
   - DOES NOT destroy terraform backend (S3 + DynamoDB)
@@ -136,7 +136,9 @@ k8s_cleanup() {
 
   log "Cleaning Kubernetes demo resources (best-effort)"
 
-  # Namespaces that may contain ALB/LB demos
+  # Namespaces that may contain ALB/LB demos — demo-app first so the LBC
+  # can deprovision ALBs and target groups before terraform tears down the VPC
+  k8s_delete_demo_ns "demo-app"
   k8s_delete_demo_ns "demo-ingress"
   k8s_delete_demo_ns "demo-storage"
 
@@ -168,7 +170,7 @@ k8s_cleanup() {
     local end=$((SECONDS + K8S_WAIT_TIMEOUT_SEC))
     while [[ $SECONDS -lt $end ]]; do
       # If both namespaces are gone, stop waiting
-      if ! kubectl get ns demo-ingress >/dev/null 2>&1 && ! kubectl get ns demo-storage >/dev/null 2>&1; then
+      if ! kubectl get ns demo-app >/dev/null 2>&1 && ! kubectl get ns demo-ingress >/dev/null 2>&1 && ! kubectl get ns demo-storage >/dev/null 2>&1; then
         break
       fi
       sleep 3
