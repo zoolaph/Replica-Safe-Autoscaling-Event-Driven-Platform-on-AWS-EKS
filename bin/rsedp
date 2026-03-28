@@ -14,6 +14,7 @@ Commands:
   aws               Login to AWS (SSO)
   bootstrap         Bootstrap required tooling / prereqs
   up                Full platform bring-up: infra → add-ons → app → check
+  down              Full platform teardown: k8s cleanup → terraform destroy → summary
   env               Environment lifecycle helper (deploy/status/etc.)
   check             Quick sanity checks (cluster/infra readiness)
   destroy           Destroy demo resources + terraform environment
@@ -42,6 +43,7 @@ Examples:
   ./bin/rsedp env
   ./bin/rsedp check
   ./bin/rsedp destroy
+  ./bin/rsedp down
   AWS_PROFILE=dev AWS_DEFAULT_REGION=eu-west-3 ./bin/rsedp aws
 H
 }
@@ -71,6 +73,7 @@ case "${cmd}" in
   demo-velero)      exec "${ROOT_DIR}/scripts/demo-velero.sh" "$@" ;;
   check)            exec "${ROOT_DIR}/scripts/check.sh" "$@" ;;
   destroy)          exec "${ROOT_DIR}/scripts/destroy.sh" "$@" ;;
+  down)             exec "${ROOT_DIR}/scripts/down.sh" "$@" ;;
   observability)    exec "${ROOT_DIR}/scripts/install-observability.sh" "$@" ;;
   logging)          exec "${ROOT_DIR}/scripts/install-logging.sh" "$@" ;;
   cert-manager)     exec "${ROOT_DIR}/scripts/install-cert-manager.sh" "$@" ;;
