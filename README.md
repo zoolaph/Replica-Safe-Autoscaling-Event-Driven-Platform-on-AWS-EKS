@@ -313,6 +313,33 @@ Key design decisions are justified (not assumed) in [docs/architecture/tradeoffs
 
 ---
 
+## Teardown
+
+To fully tear down the platform run:
+
+```bash
+./bin/rsedp down
+```
+
+This single command:
+1. Deletes Kubernetes demo resources (`demo-app`, `demo-ingress`, `demo-storage`) so the AWS Load Balancer Controller can deprovision ALBs and target groups before the VPC is destroyed
+2. Runs `terraform destroy` on `infra/environments/dev`
+3. Prints a summary of what was destroyed and what was intentionally preserved
+
+Use `--yes` to skip the interactive confirmation prompt:
+
+```bash
+./bin/rsedp down --yes
+```
+
+> **Note:** The Terraform backend (S3 state bucket + DynamoDB lock table) is **not** destroyed by `rsedp down`. To remove it manually:
+> ```bash
+> cd infra/bootstrap
+> terraform destroy
+> ```
+
+---
+
 ## Contributing / Working agreements
 
 - Every feature includes: tests + observability + docs + demo steps
