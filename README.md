@@ -311,6 +311,8 @@ Key design decisions are justified (not assumed) in [docs/architecture/tradeoffs
 └── mise.toml           Tool version pinning
 ```
 
+For a detailed breakdown of every subcommand, script, and manifest — what each touches and what to change to modify its behaviour — see [docs/COMPONENTS.md](docs/COMPONENTS.md).
+
 ---
 
 ## Teardown
